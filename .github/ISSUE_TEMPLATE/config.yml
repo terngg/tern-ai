@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: Questions and GTPS workflows
-    url: https://github.com/mzgaznkn497/tern-ai/discussions
+    url: https://github.com/terngg/tern-ai/discussions
     about: Ask questions and share non-sensitive examples in Discussions.
   - name: Security vulnerability
-    url: https://github.com/mzgaznkn497/tern-ai/security/advisories/new
+    url: https://github.com/terngg/tern-ai/security/advisories/new
     about: Report security issues privately; do not post secrets in public issues.
