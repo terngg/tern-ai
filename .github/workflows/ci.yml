@@ -22,3 +22,7 @@ jobs:
       - run: npm test
       - run: node dist/index.js --help
       - run: npm pack --dry-run
+      - run: npx playwright install --with-deps chromium
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 24
+      - run: npm run test:web
+        if: matrix.os == 'ubuntu-latest' && matrix.node == 24

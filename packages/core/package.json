@@ -1,0 +1,13 @@
+{
+  "name": "@tern-ai/core",
+  "version": "0.3.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.24.0",
+    "luaparse": "^0.3.1"
+  }
+}

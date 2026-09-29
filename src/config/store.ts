@@ -5,8 +5,8 @@ import { randomUUID } from 'node:crypto';
 import { isProvider, providerIds, type ProviderMode, type ProviderId } from '../providers/types.js';
 import { isMissing, record, TernError } from '../utils/errors.js';
 
-export const DEFAULT_GEMINI_MODEL = 'gemini-3.8-flash';
-export const DEFAULT_MODEL = 'openrouter/free';
+import { DEFAULT_GEMINI_MODEL, DEFAULT_MODEL } from './provider-defaults.js';
+export { DEFAULT_GEMINI_MODEL, DEFAULT_MODEL } from './provider-defaults.js';
 export interface Config {
   providerMode: ProviderMode; providerPriority: ProviderId[]; providers: Record<ProviderId, {enabled:boolean;model:string}>;
   model: string; temperature: number; language: string; stream: boolean; maxRepairAttempts: number;
@@ -74,7 +74,7 @@ export class ConfigStore {
   }
   async saveCredential(key: string): Promise<void> {
     const { CredentialStore } = await import('./credentials.js');
-    await new CredentialStore(this).add('openrouter',key,{});
+    await new CredentialStore(this).add('openrouter',key,Object.create(null) as NodeJS.ProcessEnv);
   }
   async setModel(provider: ProviderId, model: string): Promise<Config> {
     const config=await this.load();config.providers[provider].model=model;
@@ -83,6 +83,6 @@ export class ConfigStore {
 
   async logout(): Promise<void> {
     const { CredentialStore } = await import('./credentials.js');const store=new CredentialStore(this);
-    for(const c of await store.load({}))if(c.provider==='openrouter')await store.remove(c.id);
+    for(const c of await store.load(Object.create(null) as NodeJS.ProcessEnv))if(c.provider==='openrouter')await store.remove(c.id);
   }
 }

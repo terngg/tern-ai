@@ -1,6 +1,6 @@
 {
   "name": "tern-ai",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Terminal AI coding assistant for the documented GTPS Hosting Lua engine",
   "type": "module",
   "bin": {
@@ -16,13 +16,21 @@
   "engines": {
     "node": ">=22.16.0"
   },
+  "workspaces": [
+    "packages/core",
+    "apps/web"
+  ],
   "scripts": {
     "dev": "node --import tsx src/index.ts",
-    "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
+    "build": "npm run build:cli && npm run build:web",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test tests/*.test.ts",
-    "lint": "eslint src tests scripts && tsc --noEmit",
-    "prepack": "npm run build"
+    "lint": "eslint src tests scripts apps/web/app apps/web/lib apps/web/next.config.ts packages/core/src && tsc --noEmit && npm run typecheck --workspace @tern-ai/web",
+    "dev:web": "npm run dev --workspace @tern-ai/web",
+    "build:web": "npm run build --workspace @tern-ai/web",
+    "prepack": "npm run build:cli",
+    "test:web": "playwright test",
+    "build:cli": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs"
   },
   "license": "MIT",
   "dependencies": {
@@ -32,9 +40,12 @@
     "luaparse": "^0.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/luaparse": "^0.2.12",
     "@types/node": "^24.0.0",
     "eslint": "^10.11.0",
+    "fake-indexeddb": "^6.2.5",
+    "prettier": "^3.9.9",
     "tsx": "^4.20.0",
     "typescript": "^5.9.0",
     "typescript-eslint": "^8.0.0"

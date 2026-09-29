@@ -9,6 +9,8 @@ export class ApiKeyPool {
     this.keys=credentials.map(c=>({...c,status:'ready',failureCount:0,cooldownUntil:0,lastUsedAt:0,lastSuccessAt:0}));
   }
   snapshot():KeyState[] { this.refresh(); return this.keys.map(c=>({...c})); }
+  /** Release credential references after a one-shot web request completes. */
+  destroy():void { for(const credential of this.keys)credential.key=''; }
   private refresh():void { for(const c of this.keys) if(c.status==='cooldown' && c.cooldownUntil<=this.now()) c.status='ready'; }
   select(provider:ProviderId,tried:ReadonlySet<string>=new Set()):KeyState|undefined {
     this.refresh(); const keys=this.keys.filter(c=>c.provider===provider); const start=this.cursors.get(provider)||0;

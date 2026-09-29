@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.0
+
+- Add Tern Web: Next.js App Router, BYOK Gemini/OpenRouter, local IndexedDB chats and opt-in credential remembering.
+- Reuse the existing GTPS retrieval, providers, context, validation and repair engine through `packages/core`.
+- Add browser streaming with abort/reset, provider/model selection, Lua attachments/artifacts/downloads, and the 485-entry API Explorer.
+- Add request validation, secret redaction, security headers, bounded web requests, and mocked API/browser regression tests.
+- Keep CLI commands and credential storage compatible; the CLI version still comes from root package metadata.
+
 ## 0.2.1
 
 ### Added

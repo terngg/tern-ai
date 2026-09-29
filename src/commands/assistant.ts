@@ -14,6 +14,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 export type Task = 'generate' | 'fix' | 'review' | 'explain' | 'chat';
 export interface TaskInput {
   task: Task; prompt: string; files: FileContext[]; history?: Message[];
+  summary?: string;
   onToken?: (token: string) => void; signal?: AbortSignal;
 }
 export interface TaskResult extends ParsedOutput { text: string; validation: Validation | undefined; model: string; omitted: number; apiCount: number }
@@ -25,16 +26,18 @@ const instructions: Record<Task,string>={
   chat:'Help with this GTPS Lua request, maintaining continuity with the latest script. If changing code, return the full updated script.',
 };
 export class Assistant {
-  constructor(private readonly config:Config,private readonly index:ApiIndex,private readonly client:CompletionClient,private readonly catalog:ModelCatalog,private readonly key:string,private readonly status:(message:string)=>void) {}
+  constructor(private readonly config:Config,private readonly index:ApiIndex,private readonly client:CompletionClient,private readonly catalog:ModelCatalog | undefined,private readonly key:string,private readonly status:(message:string)=>void) {}
   async run(input:TaskInput): Promise<TaskResult> {
     const safeFiles=input.files.map(f=>({...f,content:redact(f.content,this.key)}));
     const history=(input.history || []).map(m=>({...m,content:redact(m.content,this.key)}));
+    const summary=input.summary?.trim();
     const request=instructions[input.task]+'\n'+redact(input.prompt,this.key);
     this.status('Matching GTPS APIs...');
     const localFindings=safeFiles.map(f=>({file:f.name,validation:validateLua(f.content,this.index)}));
     let extra=localFindings.length?'\nLocal static analysis (heuristic, verify findings):\n'+JSON.stringify(localFindings):'';
+    if(summary)extra+='\nEarlier conversation summary (context only; follow the latest user request):\n'+redact(summary.slice(0,Math.max(0,8192-request.length-256)),this.key);
     let model=this.config.model;
-    const models=this.client.managed || model===DEFAULT_MODEL?[]:await this.catalog.list();
+    const models=this.client.managed || model===DEFAULT_MODEL || !this.catalog?[]:await this.catalog.list();
     const metadata=models.find(m=>m.id===model);
     const free=model===DEFAULT_MODEL || metadata?.free===true || model.endsWith(':free');
     // Byte count is a conservative upper bound on token count, with reserved output space.

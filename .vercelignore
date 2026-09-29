@@ -1,0 +1,19 @@
+# Deploy application sources only. Provider credentials are always request-scoped.
+.git
+.codex
+.agents
+.aws
+**/node_modules
+**/.next
+**/.vercel
+dist
+coverage
+test-results
+playwright-report
+**/*.tsbuildinfo
+**/.env
+**/.env.*
+**/credentials*.json
+**/*.key
+**/*.pem
+**/*.log

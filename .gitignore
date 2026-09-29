@@ -15,7 +15,8 @@ coverage/
 
 # Credentials and keys
 credentials.json
-credentials.*
+credentials.*.json
+!src/**/credentials.ts
 *.pem
 *.key
 
@@ -34,3 +35,12 @@ credentials.*
 # OS generated files
 .DS_Store
 Thumbs.db
+
+# Web build and browser tests
+.next/
+.vercel/
+*.tsbuildinfo
+test-results/
+playwright-report/
+.vercel
+.env*

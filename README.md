@@ -358,3 +358,78 @@ Jika project ini membantu, star repository untuk menyimpannya dan bagikan pengal
 ## License
 
 Kode project menggunakan [MIT](LICENSE). Dokumentasi engine berasal dari materi yang diberikan pemilik project; verifikasi hak distribusinya sebelum publikasi.
+## Tern AI Web
+
+The browser app lives in `apps/web` and uses the same provider adapters, prompt builder, GTPS retrieval, Lua validator, and bounded repair engine as the CLI through `packages/core`. It is a Next.js App Router app (Next.js 16, React 19) configured for Vercel's Node.js functions.
+
+There are no accounts, logins, shared provider credentials, or cloud chat database. Users bring a Gemini API key or an OpenRouter key. Without opting in to “Remember API key on this device,” credentials exist in page memory only and disappear on reload. When remembered, a key is stored in this browser's IndexedDB; applications served from the same origin can access browser storage, so only remember a key on a device you control. A key is sent in the HTTPS request body to the Tern Web function, which forwards it to the selected provider for that request and does not persist it. Chat history, uploaded files, preferences, and generated scripts stay in browser storage. Exported conversations do not contain provider keys.
+
+Run locally:
+
+```sh
+npm install
+npm run dev:web
+```
+
+On first use, open **Settings**, enter your own key, save it for the current session, and optionally enable local remembering. Gemini model names are fetched from Google's model-list API; OpenRouter models and pricing are fetched from OpenRouter. Refresh models to update the local six-hour cache. OpenRouter defaults to `openrouter/free`; Tern does not silently choose a paid model. Selecting a paid OpenRouter model can incur charges under your provider account.
+
+Choose **Auto** to try the configured Gemini model first and fall back to OpenRouter only if that key is also configured. OpenRouter auto fallback remains on its free router unless a paid model has been explicitly selected. A provider switch keeps the same locally stored conversation. Stop cancels the active request. `.lua` and `.txt` uploads are limited to five files and 16 KiB combined; files are sent only with the generation request, never stored by the Tern server. Generated Lua is locally validated against the GTPS reference before it is offered as a downloadable artifact.
+
+The **GTPS API** page searches the existing local reference (485 entries); it is also the exact documentation source used by the generation and validation pipeline. Chat messages render as escaped Markdown, with raw HTML disabled.
+
+### Deploy to Vercel
+
+Import the repository into Vercel and set the project Root Directory to `apps/web`, with **Include source files outside of the Root Directory in the Build Step** enabled. Use the Next.js framework preset, the workspace build command `npm run build` (which runs `next build --webpack`), and default framework output. The shared `src/`, `scripts/`, `packages/core/`, and `docs/` directories must be available to the build. Keep the repository-root npm lockfile so Vercel installs the workspaces. The deployment does not need Gemini/OpenRouter environment secrets, a database, or a persistent server filesystem. Do not configure developer-owned shared API keys. Run the CLI from the **repository root**, as described in [Vercel's monorepo documentation](https://vercel.com/docs/monorepos):
+
+```sh
+vercel login
+vercel link --repo
+vercel project inspect --non-interactive
+vercel deploy --target preview  # explicitly create a preview, including on a new project
+# After testing the actual preview:
+vercel deploy --prod
+```
+
+The `terngg/tern-ai` project was deployed and checked on 2026-09-29:
+
+- Production: https://tern-ai-swart.vercel.app
+- Verified preview: https://tern-8btgos9nh-terngg.vercel.app
+
+Both deployments passed the public HTTP checks (security headers, 485 bundled APIs, required BYOK credentials, cross-origin protection and request validation) and all four browser smoke tests. AI responses in browser tests were mocked; live Gemini/OpenRouter generation with a valid key has not been verified. Deployment protection is disabled for this no-login application. No developer provider credentials were configured.
+
+For the linked checkout, deploy from the repository root with `vercel deploy --target preview --scope terngg`, test the returned preview, then `vercel deploy --prod --scope terngg`. The explicit preview target avoids Vercel's first-deployment production default. There are no manual post-deployment file copies or database migrations.
+
+```sh
+node scripts/check-web-deployment.mjs https://tern-ai-swart.vercel.app
+TERN_WEB_TEST_URL=https://tern-ai-swart.vercel.app npm run test:web
+```
+
+`.vercelignore` excludes local secrets, credentials, Vercel login metadata and build caches from source uploads. The web workspace declares its own TypeScript dependencies and the core workspace declares its provider/parser dependencies, so Vercel's filtered monorepo install can build independently of root development packages.
+
+### Troubleshooting
+
+- **No provider configured:** add your own provider key in Settings. A key in the CLI credential store is not exposed to the browser.
+- **Invalid key / quota:** test the key in Settings and check limits and billing directly with the selected provider. Add a key only when you own or are authorized to use it, and observe provider rate limits and policies.
+- **Model unavailable:** refresh the provider model list and choose an available model; model IDs can change over time.
+- **No saved chats:** history is local to that browser profile and origin. Browser storage clearing, private browsing, or switching devices can remove or hide it; export JSON to make a manual backup.
+- **GTPS reference unavailable on deploy:** confirm `docs/gtps-lua-api.md` is included in the deployment repository and redeploy.
+
+### Web verification and limits
+
+```sh
+npm install
+npm run lint
+npm run build         # CLI + production Next.js build
+npm test              # existing CLI tests + web/core/API tests, mocked providers
+npx playwright install chromium
+npm run test:web      # browser tests against the production build
+node dist/index.js --help
+```
+
+`npm run build:cli` builds just the CLI; `npm run build:web` builds just the browser app. No real provider credentials are needed for tests. Browser tests intercept provider endpoints; API integration tests mock HTTP beneath the real provider SDK/adapters. These checks do not prove live provider access or a Vercel deployment.
+
+Conversation context includes previous complete user/assistant turns, complete Lua artifacts, filenames and attached contents, regardless of the provider/model chosen for the next request. A bounded local extractive summary records earlier requirements, decisions, function names and storage literals as chats grow. This is a heuristic summary, not an additional AI request. The shared core reserves space for authoritative API docs and rejects oversized latest scripts instead of silently slicing code. Very large scripts may require splitting into smaller files.
+
+A failed stream is reset before fallback/repair; failed or cancelled generations never create final downloadable artifacts. Explicit generate/fix results that still fail validation after two repair attempts return an error. Syntax highlighting and downloads run in the browser; Lua is never executed. Imported validation badges are discarded because imports are untrusted.
+
+Endpoints are narrow (`/api/ai/generate`, `/api/ai/models`, `/api/ai/test`), validate bounded JSON bodies, reject cross-origin browser requests, and have timeouts and per-instance burst limits. The in-memory rate limiter is not a distributed quota system; Vercel Firewall rules can supplement it for a public deployment. The cross-platform Next launcher disables framework telemetry before startup. No app telemetry, shared credentials, central chat storage, or generic proxy is introduced. The Node functions read bundled documentation, with file tracing configured, and never write user data to disk.

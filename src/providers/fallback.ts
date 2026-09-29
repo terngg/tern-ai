@@ -9,6 +9,7 @@ import type { CompletionClient, ProviderId } from './types.js';
 export class ProviderClient implements CompletionClient {
   readonly managed=true;
   lastModel='';
+  lastProvider:ProviderId|undefined;
   constructor(public config:Config,readonly pool:ApiKeyPool,private readonly registry:ProviderRegistry,public status:(message:string)=>void=()=>undefined,public verbose=false) {}
   order():ProviderId[] {return (this.config.providerMode==='auto'?this.config.providerPriority:[this.config.providerMode]).filter(p=>this.config.providers[p].enabled);}
   async complete(request:CompletionOptions):Promise<string> {
@@ -46,7 +47,7 @@ export class ProviderClient implements CompletionClient {
             }else throw error;
           }
           if(request.signal?.aborted)throw new ProviderError('aborted');
-          this.pool.success(credential.id);this.lastModel=settings.model;
+          this.pool.success(credential.id);this.lastModel=settings.model;this.lastProvider=provider;
           if(pending)request.onToken?.(redact(pending));
           return redact(text);
         }catch(error) {
