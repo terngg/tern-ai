@@ -1,0 +1,59 @@
+{
+  "name": "tern-ai",
+  "version": "0.2.1",
+  "description": "Terminal AI coding assistant for the documented GTPS Hosting Lua engine",
+  "type": "module",
+  "bin": {
+    "tern": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "docs/gtps-lua-api.md",
+    "docs/engine-notes.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.16.0"
+  },
+  "scripts": {
+    "dev": "node --import tsx src/index.ts",
+    "build": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts",
+    "lint": "eslint src tests scripts && tsc --noEmit",
+    "prepack": "npm run build"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@google/genai": "^2.24.0",
+    "commander": "^14.0.0",
+    "diff": "^8.0.2",
+    "luaparse": "^0.3.1"
+  },
+  "devDependencies": {
+    "@types/luaparse": "^0.2.12",
+    "@types/node": "^24.0.0",
+    "eslint": "^10.11.0",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "typescript-eslint": "^8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/terngg/tern-ai.git"
+  },
+  "homepage": "https://github.com/terngg/tern-ai#readme",
+  "bugs": {
+    "url": "https://github.com/terngg/tern-ai/issues"
+  },
+  "keywords": [
+    "gtps",
+    "lua",
+    "cli",
+    "coding-assistant",
+    "gemini",
+    "openrouter",
+    "typescript"
+  ]
+}

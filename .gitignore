@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+coverage/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+
+# Credentials and keys
+credentials.json
+credentials.*
+*.pem
+*.key
+
+# Package artifacts
+*.tgz
+
+# Local Tern state
+.tern/
+
+# Agent and editor state
+.codex/
+.agents/
+.vscode/
+.idea/
+
+# OS generated files
+.DS_Store
+Thumbs.db

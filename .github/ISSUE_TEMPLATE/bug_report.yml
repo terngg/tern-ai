@@ -1,0 +1,47 @@
+name: Bug report / Laporan bug
+description: Report a reproducible Tern AI problem.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "Use Indonesian or English. Remove API keys, private scripts, and credential files before submitting. Report vulnerabilities through SECURITY.md."
+  - type: input
+    id: version
+    attributes:
+      label: Tern version
+      description: Output of tern --version
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and Node.js version
+      placeholder: "Ubuntu, Node.js 24"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: Include a minimal command or non-sensitive Lua example.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Sanitized diagnostics
+      description: Provider mode, model ID, normalized error, and relevant --verbose output. No credentials.
+      render: text
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: Privacy check
+      options:
+        - label: I removed API keys, credential files, and private data.
+          required: true

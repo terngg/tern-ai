@@ -1,0 +1,26 @@
+name: Feature request / Usulan fitur
+description: Suggest a concrete improvement to a GTPS Lua workflow.
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem should this solve?
+      description: Indonesian or English is welcome.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Show an example command or user workflow.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and tradeoffs
+  - type: textarea
+    id: contribution
+    attributes:
+      label: Would you like to help implement or test it?
