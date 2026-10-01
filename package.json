@@ -29,7 +29,6 @@
     "dev:web": "npm run dev --workspace @tern-ai/web",
     "build:web": "npm run build --workspace @tern-ai/web",
     "prepack": "npm run build:cli",
-    "prepare": "npm run build:cli",
     "test:web": "playwright test",
     "build:cli": "tsc -p tsconfig.build.json && node scripts/postbuild.mjs"
   },

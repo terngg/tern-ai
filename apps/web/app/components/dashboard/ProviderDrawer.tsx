@@ -596,21 +596,21 @@ function CompanionSection({
           <div className="space-y-3 text-xs">
             <div>
               <span className="font-semibold text-text-muted block mb-1">
-                1. Install Companion CLI:
+                1. Enable Companion CLI:
               </span>
               <div className="space-y-1.5">
                 <div className="p-2.5 rounded-lg bg-bg border border-border-subtle font-mono text-[11px] text-text-main select-all flex items-center justify-between">
-                  <code>npm install -g https://github.com/terngg/tern-ai</code>
+                  <code>npm link</code>
                   <button
                     type="button"
-                    onClick={() => handleCopy("npm install -g https://github.com/terngg/tern-ai")}
+                    onClick={() => handleCopy("npm link")}
                     className="text-text-muted hover:text-text-main cursor-pointer"
                   >
                     <Copy size={12} />
                   </button>
                 </div>
                 <p className="text-[11px] text-text-subtle">
-                  Or run <code className="text-text-main font-mono">npm link</code> if already inside the local Tern AI directory.
+                  Run inside your local <code className="text-text-main font-mono">~/TernAI</code> directory to make <code className="text-text-main font-mono">tern</code> globally available.
                 </p>
               </div>
             </div>
