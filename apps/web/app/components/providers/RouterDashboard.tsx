@@ -59,7 +59,9 @@ export const labels: Record<string, string> = {
 
 export function connectionStatus(c: Connection): string {
   if (!c.enabled) return "Disabled";
+  if (c.quota === "exhausted") return "Quota exhausted";
   if (c.cooldownUntil && c.cooldownUntil > Date.now()) return "Cooldown";
+  if (!c.model) return "Model required";
   if (
     c.checkedAt &&
     Date.now() - c.checkedAt > 15 * 60_000 &&

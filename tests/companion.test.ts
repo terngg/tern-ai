@@ -6,9 +6,91 @@ import { getLocalAdapters } from "../src/companion/registry.js";
 import { detectAllLocalProviders } from "../src/companion/detector.js";
 import { CompanionRelay } from "../apps/web/lib/router/companion-relay.js";
 import { RouterStore, type Database } from "../apps/web/lib/router/store.js";
-import { RoutedClient } from "../apps/web/lib/router/engine.js";
+import { RoutedClient, eligible, checkConnection, unavailableReason } from "../apps/web/lib/router/engine.js";
+import type { DetectedLocalProvider } from "../apps/web/lib/router/types.js";
 
 process.env.TERN_CREDENTIAL_KEY = "ab".repeat(32);
+
+const antigravity: DetectedLocalProvider = {
+  id: "antigravity", name: "Antigravity", installed: true, authenticated: true,
+  models: [{ id: "test-flash", name: "Test Flash", source: "discovered" }],
+  health: { ok: true },
+};
+
+test("heartbeat repairs missing defaults and expired cooldowns without bypassing active restrictions", async () => {
+  const { pg, db } = await pgFixture();
+  try {
+    const relay = new CompanionRelay(db);
+    const { code } = await relay.generatePairCode("user-1");
+    const { companionId } = await relay.redeemPairCode(code, "linux", "test");
+    await relay.syncHeartbeat(companionId, "linux", "test", [{ ...antigravity, models: [] }]);
+    const store = new RouterStore("user-1", db);
+    const [initial] = await store.connections();
+    assert.equal(eligible(initial!), false);
+    await store.patch(initial!.id, { health: "timeout", timeoutMs: 60_000, cooldownUntil: Date.now() - 1 });
+    await relay.syncHeartbeat(companionId, "linux", "test", [antigravity]);
+    const ready = await store.connection(initial!.id);
+    assert.equal(ready.model, "test-flash");
+    assert.equal(ready.timeoutMs, 90_000);
+    assert.equal(ready.cooldownUntil, null);
+    assert.equal(eligible(ready), true);
+
+    for (const health of ["timeout", "rate_limit", "provider_overload"] as const) {
+      const cooldownUntil = Date.now() + 30_000;
+      await store.patch(ready.id, { health, cooldownUntil, model: "custom-choice", timeoutMs: 45_000 });
+      await relay.syncHeartbeat(companionId, "linux", "test", [antigravity]);
+      const cooling = await store.connection(ready.id);
+      assert.equal(cooling.health, health);
+      assert.equal(cooling.cooldownUntil, cooldownUntil);
+      assert.equal(cooling.model, "custom-choice");
+      assert.equal(cooling.timeoutMs, 45_000);
+      assert.equal(eligible(cooling), false);
+      assert.match(unavailableReason([cooling]), /cooling down.*Retry in \d+ seconds/);
+    }
+    await store.patch(ready.id, { health: "quota_exhausted", quota: "exhausted", cooldownUntil: null });
+    await relay.syncHeartbeat(companionId, "linux", "test", [antigravity]);
+    const exhausted = await checkConnection(store, ready.id, new AbortController().signal);
+    assert.equal(exhausted.quota, "exhausted");
+    assert.equal(exhausted.health, "quota_exhausted");
+    assert.equal(eligible(exhausted), false);
+    assert.deepEqual(await new RouterStore("other-user", db).connections(), []);
+  } finally { await pg.close(); }
+});
+
+test("companion health check rejects failed local health and does not claim an auth failure", async () => {
+  const { pg, db } = await pgFixture();
+  try {
+    const relay = new CompanionRelay(db);
+    const { code } = await relay.generatePairCode("user-1");
+    const { companionId } = await relay.redeemPairCode(code, "linux", "test");
+    await relay.syncHeartbeat(companionId, "linux", "test", [{ ...antigravity, health: { ok: false } }]);
+    const store = new RouterStore("user-1", db);
+    const [connection] = await store.connections();
+    await assert.rejects(checkConnection(store, connection!.id, new AbortController().signal), /could not be reached/);
+    assert.equal((await store.connection(connection!.id)).health, "network");
+  } finally { await pg.close(); }
+});
+
+test("companion relay waits past the former 60-second cutoff", async (t) => {
+  const now = Date.now();
+  t.mock.timers.enable({ apis: ["Date"], now });
+  let polls = 0;
+  const db: Database = {
+    async query<T extends Record<string, unknown>>(sql: string) {
+      if (sql.includes("FROM tern_companions"))
+        return { rows: [{ id: "test-companion", last_heartbeat: now }] as unknown as T[] };
+      if (sql.includes("SELECT status, chunks")) {
+        polls++;
+        if (polls === 1) t.mock.timers.tick(65_000);
+        return { rows: [{ status: polls === 1 ? "running" : "completed", chunks: polls === 1 ? [] : ["slow result"], error: null }] as unknown as T[] };
+      }
+      return { rows: [] };
+    },
+  };
+  const result = await new CompanionRelay(db).dispatchAndStreamJob("user-1", "antigravity", "test-flash", [{ role: "user", content: "test" }]);
+  assert.equal(result.text, "slow result");
+  assert.equal(polls, 2);
+});
 
 async function pgFixture() {
   const pg = new PGlite();
@@ -280,6 +362,16 @@ test("shared router routes seamlessly to companion connection and records trace"
     assert.equal(traces.length, 1);
     assert.equal(traces[0]!.provider, "codex");
     assert.equal(traces[0]!.status, "ok");
+
+    // An explicit discovered model remains routable without a saved default.
+    await store.patch(connections[0]!.id, { model: "" });
+    const explicit = new RoutedClient(store, `${connections[0]!.id}::o3-mini`);
+    const [selected] = await Promise.all([
+      explicit.complete({ model: "o3-mini", temperature: 0, free: false,
+        messages: [{ role: "user", content: "generate code" }], stream: false }),
+      runner(),
+    ]);
+    assert.equal(selected, "print('Lua code from local Codex')");
   } finally {
     await pg.close();
   }

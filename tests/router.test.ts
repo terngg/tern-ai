@@ -210,7 +210,7 @@ test("PostgreSQL isolation, encrypted rows, atomic cursors, cooldown claims and 
         temperature: 0,
         free: false,
       }),
-      /No eligible/,
+      /cooling down.*Retry in \d+ seconds/,
     );
     await assert.rejects(updateConnection(b, { id: c.id, enabled: false }));
   } finally {

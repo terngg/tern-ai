@@ -8,6 +8,7 @@ import { discover, infer } from "./adapters.js";
 import { protectedFetch, type Transport } from "./transport.js";
 import type { Connection, Strategy, Trace } from "./types.js";
 import { virtualModels } from "./registry.js";
+import { companionState } from "./companion-state.js";
 export function redact(value: string, secrets: string[]): string {
   for (const secret of secrets)
     if (secret) value = value.split(secret).join("[redacted]");
@@ -51,6 +52,21 @@ export function eligible(c: Connection, now = Date.now()): boolean {
     c.quota !== "exhausted" &&
     !(c.cooldownUntil && c.cooldownUntil > now)
   );
+}
+export function unavailableReason(connections: Connection[], now = Date.now()): string {
+  if (!connections.length)
+    return "No connection matches the selected model or pool. Select an available model in Providers.";
+  const reasons = new Set<string>();
+  for (const c of connections) {
+    if (!c.enabled) reasons.add("Connection is disabled.");
+    else if (!c.model) reasons.add("Select a model in Providers.");
+    else if (c.health === "auth_failure") reasons.add("Authentication failed; reconnect in Providers.");
+    else if (c.health === "permission_denied") reasons.add("Provider denied access.");
+    else if (c.quota === "exhausted") reasons.add("Provider quota is exhausted.");
+    else if (c.cooldownUntil && c.cooldownUntil > now)
+      reasons.add(`Connection is cooling down after a provider error. Retry in ${Math.ceil((c.cooldownUntil - now) / 1000)} seconds.`);
+  }
+  return [...reasons].join(" ") || "No eligible model fits this request. Check model context limits in Providers.";
 }
 export async function checkConnection(
   store: RouterStore,
@@ -100,15 +116,8 @@ export async function checkConnection(
       });
       throw e;
     }
-    await store.patch(id, {
-      models: detected.models.length > 0 ? detected.models : c.models,
-      modelsAt: Date.now(),
-      health: "connected",
-      checkedAt: Date.now(),
-      latencyMs: detected.health.latencyMs ?? (Date.now() - start),
-      cooldownUntil: null,
-      quota: "unknown",
-    });
+    await store.patch(id, companionState(detected, c));
+    if (!detected.health.ok) throw new RouteError("network", 503);
     return store.connection(id);
   }
 
@@ -164,7 +173,7 @@ export class RoutedClient implements CompletionClient {
   ) {}
   async complete(options: CompletionOptions): Promise<string> {
     const all = await this.store.connections();
-    let candidates = all.filter((c) => eligible(c)),
+    let candidates = all,
       strategy: Strategy = "round_robin";
     if (this.poolId) {
       const pool = (await this.store.pools()).find(
@@ -191,6 +200,8 @@ export class RoutedClient implements CompletionClient {
         )
         .map((c) => ({ ...c, model }));
     }
+    const selected = candidates;
+    candidates = candidates.filter((c) => eligible(c));
     if (this.requestedModel === "auto/fast") strategy = "health_aware";
     if (this.requestedModel === "auto/quality") strategy = "priority"; // Explicit user ranking, never an invented quality score.
     if (this.requestedModel === "auto/cheap") {
@@ -243,14 +254,14 @@ export class RoutedClient implements CompletionClient {
       throw new PublicError(
         this.requestedModel === "auto/cheap"
           ? "No eligible connection has fresh, reliable pricing. Refresh models or choose another routing mode."
-          : "No eligible connection. Configure a model and check connection health in Providers.",
+          : unavailableReason(selected),
         409,
       );
     const path: string[] = [];
     let last: RouteError | undefined;
     for (const c of candidates.slice(0, 4)) {
       options.signal?.throwIfAborted();
-      if (!eligible(await this.store.connection(c.id))) continue;
+      if (!eligible({ ...await this.store.connection(c.id), model: c.model })) continue;
       const secret = await this.store.secret(c.id),
         secrets = [secret.key, ...Object.values(secret.headers)].filter(
           Boolean,
@@ -310,6 +321,7 @@ export class RoutedClient implements CompletionClient {
               output.push(text);
             },
             signal,
+            c.timeoutMs,
           );
           resultText = companionRes.text;
         } else {

@@ -693,20 +693,24 @@ function CompanionSection({
               </span>
               <Badge
                 variant={
-                  !detected?.installed
+                  !status.connected || !detected?.installed
                     ? "default"
-                    : detected.authenticated
+                    : detected.authenticated && detected.health.ok
                       ? "success"
                       : "warning"
                 }
                 size="sm"
                 dot
               >
-                {!detected?.installed
+                {!status.connected
+                  ? "Companion offline"
+                  : !detected?.installed
                   ? "Not installed"
-                  : detected.authenticated
-                    ? "Ready"
-                    : "Auth required"}
+                  : !detected.authenticated
+                    ? "Auth required"
+                    : !detected.health.ok
+                      ? "Local check failed"
+                      : "Local check passed"}
               </Badge>
             </div>
 
@@ -764,4 +768,3 @@ function CompanionSection({
     </div>
   );
 }
-

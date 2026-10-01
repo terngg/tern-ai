@@ -7,6 +7,7 @@ import type {
   Secret,
 } from "./types.js";
 import { RouterStore } from "./store.js";
+import { companionState, COMPANION_TIMEOUT_MS } from "./companion-state.js";
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -134,7 +135,7 @@ export class CompanionRelay {
 
     for (const dp of detectedProviders) {
       if (!dp.installed) continue;
-      const found = existing.find((c) => c.provider === dp.id);
+      const found = existing.find((c) => c.provider === dp.id && c.baseUrl === `companion://${dp.id}`);
       const isHealthy = dp.authenticated && dp.health.ok;
       const defaultModel = dp.models[0]?.id || "";
 
@@ -154,10 +155,10 @@ export class CompanionRelay {
             priority: 0,
             model: defaultModel,
             baseUrl: `companion://${dp.id}`,
-            timeoutMs: 60000,
+            timeoutMs: COMPANION_TIMEOUT_MS,
             models: dp.models,
             modelsAt: Date.now(),
-            health: isHealthy ? "connected" : "auth_failure",
+            health: isHealthy ? "connected" : dp.authenticated ? "network" : "auth_failure",
             checkedAt: Date.now(),
             latencyMs: dp.health.latencyMs ?? null,
             cooldownUntil: null,
@@ -170,13 +171,7 @@ export class CompanionRelay {
         );
       } else {
         // Update existing connection health and models
-        await store.patch(found.id, {
-          health: isHealthy ? "connected" : "auth_failure",
-          checkedAt: Date.now(),
-          latencyMs: dp.health.latencyMs ?? null,
-          models: dp.models.length > 0 ? dp.models : found.models,
-          modelsAt: Date.now(),
-        });
+        await store.patch(found.id, companionState(dp, found));
       }
     }
   }
@@ -239,6 +234,7 @@ export class CompanionRelay {
     maxTokens?: number,
     onToken?: (token: string) => void,
     signal?: AbortSignal,
+    timeoutMs = COMPANION_TIMEOUT_MS,
   ): Promise<{ text: string }> {
     const { rows: companionRows } = await this.db.query<{ id: string; last_heartbeat: string | null }>(
       "SELECT id, last_heartbeat FROM tern_companions WHERE user_id=$1",
@@ -266,7 +262,6 @@ export class CompanionRelay {
     let text = "";
     let processedChunks = 0;
     const start = Date.now();
-    const timeoutMs = 60_000;
 
     while (Date.now() - start < timeoutMs) {
       if (signal?.aborted) {

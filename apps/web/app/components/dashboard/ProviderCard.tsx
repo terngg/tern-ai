@@ -23,7 +23,7 @@ export function ProviderCard({
   const hasAccounts = accounts.length > 0;
   const allDisabled = hasAccounts && accounts.every((c) => !c.enabled);
   const connectedCount = accounts.filter(
-    (c) => c.enabled && ["connected", "healthy"].includes(c.health),
+    (c) => ["Connected", "Healthy"].includes(connectionStatus(c)),
   ).length;
   const errorCount = accounts.filter(
     (c) =>
