@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -41,5 +41,38 @@ export function saveCompanionConfig(config: CompanionConfig): void {
     throw new Error(
       `Cannot save companion config to ~/.tern/companion.json: ${(err as Error)?.message}`,
     );
+  }
+}
+
+export const PID_FILE = join(CONFIG_DIR, "companion.pid");
+export const LOG_FILE = join(CONFIG_DIR, "companion.log");
+
+export function getDaemonPid(): number | null {
+  try {
+    if (!existsSync(PID_FILE)) return null;
+    const pid = parseInt(readFileSync(PID_FILE, "utf8").trim(), 10);
+    if (!pid || isNaN(pid)) return null;
+    // Check if process is still running
+    process.kill(pid, 0);
+    return pid;
+  } catch {
+    return null;
+  }
+}
+
+export function saveDaemonPid(pid: number): void {
+  if (!existsSync(CONFIG_DIR)) {
+    mkdirSync(CONFIG_DIR, { recursive: true, mode: 0o700 });
+  }
+  writeFileSync(PID_FILE, String(pid), { encoding: "utf8", mode: 0o600 });
+}
+
+export function clearDaemonPid(): void {
+  try {
+    if (existsSync(PID_FILE)) {
+      unlinkSync(PID_FILE);
+    }
+  } catch {
+    /* ignore */
   }
 }

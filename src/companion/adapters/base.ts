@@ -2,9 +2,22 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { promisify } from "node:util";
 import { execFile as nodeExecFile } from "node:child_process";
 
+import { existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
+
 const execFileAsync = promisify(nodeExecFile);
 
 export async function findBinary(name: string): Promise<string | null> {
+  const commonPaths = [
+    join(homedir(), ".local", "bin", name),
+    join(homedir(), "bin", name),
+    join("/usr", "local", "bin", name),
+    join("/usr", "bin", name),
+  ];
+  for (const p of commonPaths) {
+    if (existsSync(p)) return p;
+  }
   const cmd = process.platform === "win32" ? "where" : "which";
   try {
     const { stdout } = await execFileAsync(cmd, [name], { timeout: 3000 });
@@ -46,7 +59,7 @@ export function spawnStreaming(
   kill: () => void;
 } {
   const child = spawn(bin, args, {
-    stdio: ["pipe", "pipe", "pipe"],
+    stdio: ["ignore", "pipe", "pipe"],
   });
 
   if (signal) {

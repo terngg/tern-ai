@@ -25,18 +25,18 @@ export class AntigravityAdapter implements LocalProviderAdapter {
   private activeProcesses = new Map<string, () => void>();
 
   async detect(): Promise<DetectionResult> {
-    const bin = (await findBinary("agy")) || (await findBinary("antigravity"));
-    const dir = join(homedir(), ".gemini", "antigravity-cli");
+    let bin = (await findBinary("agy")) || (await findBinary("antigravity"));
+    if (!bin) {
+      const fallback = join(homedir(), ".local", "bin", "agy");
+      if (existsSync(fallback)) bin = fallback;
+    }
     if (bin) {
       const { stdout, code } = await runCommand(bin, ["--version"], 3000);
       return {
         installed: true,
         path: bin,
-        version: code === 0 && stdout ? stdout : undefined,
+        version: code === 0 && stdout ? stdout : "2.0",
       };
-    }
-    if (existsSync(dir)) {
-      return { installed: true, path: dir, version: "2.0" };
     }
     return { installed: false };
   }
@@ -79,9 +79,18 @@ export class AntigravityAdapter implements LocalProviderAdapter {
     const lastMessage =
       request.messages[request.messages.length - 1]?.content || "";
 
+    const args = ["-p", lastMessage];
+    if (request.model === "antigravity-flash" || !request.model) {
+      args.unshift("--model", "gemini-3.8-flash-medium");
+    } else if (request.model === "antigravity-pro") {
+      args.unshift("--model", "gemini-3.1-pro-high");
+    } else {
+      args.unshift("--model", request.model);
+    }
+
     const { stream, kill } = spawnStreaming(
       det.path,
-      ["run", lastMessage],
+      args,
       request.signal,
     );
     this.activeProcesses.set(request.id, kill);

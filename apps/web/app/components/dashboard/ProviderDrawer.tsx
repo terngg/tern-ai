@@ -596,21 +596,31 @@ function CompanionSection({
           <div className="space-y-3 text-xs">
             <div>
               <span className="font-semibold text-text-muted block mb-1">
-                1. Enable Companion CLI:
+                1. Install Tern Companion:
               </span>
-              <div className="space-y-1.5">
+              <div className="space-y-2">
                 <div className="p-2.5 rounded-lg bg-bg border border-border-subtle font-mono text-[11px] text-text-main select-all flex items-center justify-between">
-                  <code>npm link</code>
+                  <code>curl -fsSL https://tern-ai-swart.vercel.app/install.sh | bash</code>
                   <button
                     type="button"
-                    onClick={() => handleCopy("npm link")}
+                    onClick={() => handleCopy("curl -fsSL https://tern-ai-swart.vercel.app/install.sh | bash")}
                     className="text-text-muted hover:text-text-main cursor-pointer"
                   >
                     <Copy size={12} />
                   </button>
                 </div>
+                <div className="p-2 rounded-lg bg-surface border border-border-subtle font-mono text-[10px] text-text-muted select-all flex items-center justify-between">
+                  <span>npm install -g https://github.com/terngg/tern-ai</span>
+                  <button
+                    type="button"
+                    onClick={() => handleCopy("npm install -g https://github.com/terngg/tern-ai")}
+                    className="text-text-muted hover:text-text-main cursor-pointer"
+                  >
+                    <Copy size={11} />
+                  </button>
+                </div>
                 <p className="text-[11px] text-text-subtle">
-                  Run inside your local <code className="text-text-main font-mono">~/TernAI</code> directory to make <code className="text-text-main font-mono">tern</code> globally available.
+                  Works on Linux, macOS, and Windows. No repository cloning required.
                 </p>
               </div>
             </div>
@@ -633,7 +643,7 @@ function CompanionSection({
                     </button>
                   </div>
                   <p className="text-[11px] text-text-subtle">
-                    Code expires in 10 minutes. Run in your terminal, then start the daemon with <code className="text-text-main">tern companion</code>.
+                    Code expires in 10 minutes. Pairing automatically syncs local providers and launches the background daemon.
                   </p>
                 </div>
               ) : (

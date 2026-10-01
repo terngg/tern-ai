@@ -79,6 +79,18 @@ export function program():Command {
     const { companionStatus } = await import('../commands/companion.js');
     await companionStatus();
   });
+  companion.command('start').description('Start companion daemon in background').action(async () => {
+    const { startCompanionDaemon } = await import('../commands/companion.js');
+    await startCompanionDaemon();
+  });
+  companion.command('stop').description('Stop companion background daemon').action(async () => {
+    const { stopCompanionDaemon } = await import('../commands/companion.js');
+    await stopCompanionDaemon();
+  });
+  companion.command('_daemon', { hidden: true }).action(async () => {
+    const { runCompanion } = await import('../commands/companion.js');
+    await runCompanion();
+  });
   companion.command('providers').description('List detected local AI providers, models, and health').action(async () => {
     const { companionProviders } = await import('../commands/companion.js');
     await companionProviders();

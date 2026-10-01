@@ -1,5 +1,14 @@
 import { hostname } from "node:os";
-import { loadCompanionConfig, saveCompanionConfig } from "../companion/config.js";
+import { openSync } from "node:fs";
+import { spawn } from "node:child_process";
+import {
+  loadCompanionConfig,
+  saveCompanionConfig,
+  getDaemonPid,
+  saveDaemonPid,
+  clearDaemonPid,
+  LOG_FILE,
+} from "../companion/config.js";
 import { detectAllLocalProviders } from "../companion/detector.js";
 import { CompanionClient } from "../companion/client.js";
 import { output, info } from "../cli/io.js";
@@ -10,6 +19,58 @@ const DEFAULT_SERVER_URL =
   (process.env.NODE_ENV === "development"
     ? "http://localhost:3000"
     : "https://tern-ai-swart.vercel.app");
+
+export async function startCompanionDaemon(): Promise<void> {
+  const config = loadCompanionConfig();
+  if (!config) {
+    throw new TernError(
+      "Tern Companion is not paired. Run `tern companion pair <code>` first.",
+    );
+  }
+
+  const existingPid = getDaemonPid();
+  if (existingPid) {
+    output(`Tern Companion daemon is already running (PID: ${existingPid}).`);
+    return;
+  }
+
+  const outFd = openSync(LOG_FILE, "a");
+  const errFd = openSync(LOG_FILE, "a");
+
+  const binPath = process.argv[1] || "tern";
+  const child = spawn(process.execPath, [binPath, "companion", "_daemon"], {
+    detached: true,
+    stdio: ["ignore", outFd, errFd],
+    env: process.env,
+  });
+
+  if (child.pid) {
+    saveDaemonPid(child.pid);
+    child.unref();
+    output(`✓ Tern Companion daemon started in background (PID: ${child.pid}).`);
+    output(`  Logs: ${LOG_FILE}`);
+  } else {
+    throw new TernError("Failed to start companion background daemon.");
+  }
+}
+
+export async function stopCompanionDaemon(): Promise<void> {
+  const pid = getDaemonPid();
+  if (!pid) {
+    output("Tern Companion daemon is not running.");
+    clearDaemonPid();
+    return;
+  }
+
+  try {
+    process.kill(pid, "SIGTERM");
+    output(`✓ Tern Companion daemon (PID: ${pid}) stopped.`);
+  } catch (err: unknown) {
+    output(`Failed to stop daemon PID ${pid}: ${(err as Error)?.message}`);
+  } finally {
+    clearDaemonPid();
+  }
+}
 
 export async function pairCompanion(
   code: string,
@@ -64,7 +125,24 @@ export async function pairCompanion(
   output(`✓ Tern Companion paired successfully!`);
   output(`  Companion ID : ${data.companionId}`);
   output(`  Server       : ${serverUrl}`);
-  output(`\nStart the daemon with:\n  tern companion`);
+
+  info("Syncing detected local AI providers with your Tern AI account...");
+  try {
+    const client = new CompanionClient({
+      companionId: data.companionId,
+      token: data.token,
+      serverUrl,
+      userId: data.userId,
+      label: data.label || hostname() || "local-companion",
+      pairedAt: Date.now(),
+    });
+    await client.reportStatus();
+    output("✓ Local providers synced!");
+  } catch (err: unknown) {
+    output(`  Warning: initial provider sync: ${(err as Error)?.message}`);
+  }
+
+  await startCompanionDaemon();
 }
 
 export async function companionStatus(): Promise<void> {
@@ -76,10 +154,12 @@ export async function companionStatus(): Promise<void> {
     return;
   }
 
+  const daemonPid = getDaemonPid();
   output("Tern Companion: Paired");
   output(`  ID     : ${config.companionId}`);
   output(`  Server : ${config.serverUrl}`);
   output(`  Label  : ${config.label}`);
+  output(`  Daemon : ${daemonPid ? `Active (PID: ${daemonPid})` : "Stopped"}`);
   output(`  Paired : ${new Date(config.pairedAt).toLocaleString()}`);
   output("\nLocal Provider Probing:");
 
@@ -120,15 +200,33 @@ export async function runCompanion(): Promise<void> {
       "Tern Companion is not paired. Run `tern companion pair <code>` first.",
     );
   }
+
+  const isInternalDaemon = process.argv.includes("_daemon");
+  const existingPid = getDaemonPid();
+  if (!isInternalDaemon && existingPid && existingPid !== process.pid) {
+    output(
+      `Tern Companion daemon is already running in background (PID: ${existingPid}).`,
+    );
+    output("To view status : tern companion status");
+    output("To stop daemon : tern companion stop");
+    return;
+  }
+
+  saveDaemonPid(process.pid);
   const client = new CompanionClient(config);
 
   const cleanup = () => {
     client.stop();
+    clearDaemonPid();
     process.stdout.write("\nTern Companion stopped.\n");
     process.exit(0);
   };
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
 
-  await client.start();
+  try {
+    await client.start();
+  } finally {
+    clearDaemonPid();
+  }
 }

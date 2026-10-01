@@ -14,10 +14,11 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 
 const CODEX_MODELS: LocalModel[] = [
-  { id: "o3-mini", name: "o3-mini (High reasoning)" },
-  { id: "o1", name: "o1 (Reasoning)" },
+  { id: "gpt-6-astra", name: "GPT-6 Astra (Default)" },
   { id: "gpt-4o", name: "GPT-4o (Omni multimodal)" },
   { id: "gpt-4o-mini", name: "GPT-4o-mini (Fast & efficient)" },
+  { id: "o1", name: "o1 (High reasoning)" },
+  { id: "o3-mini", name: "o3-mini (Reasoning)" },
 ];
 
 export class CodexAdapter implements LocalProviderAdapter {
@@ -134,20 +135,56 @@ export class CodexAdapter implements LocalProviderAdapter {
       ? `${systemPrompt}\n\nUser: ${lastMessage}`
       : lastMessage;
 
-    const args = [
-      "exec",
-      "--model",
-      request.model || "o3-mini",
-      "--prompt",
-      fullPrompt,
-    ];
+    const args = ["exec", "--json"];
+    if (request.model && request.model !== "o3-mini" && request.model !== "auto") {
+      args.push("-m", request.model);
+    }
+    args.push(fullPrompt);
 
     const { stream, kill } = spawnStreaming(det.path, args, request.signal);
     this.activeProcesses.set(request.id, kill);
 
     try {
+      let buffer = "";
       for await (const chunk of stream) {
-        yield { type: "token", token: chunk };
+        buffer += chunk;
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const data = JSON.parse(line) as {
+              type?: string;
+              item?: { type?: string; text?: string };
+            };
+            if (
+              data.type === "item.completed" &&
+              data.item?.type === "agent_message" &&
+              data.item.text
+            ) {
+              yield { type: "token", token: data.item.text };
+            }
+          } catch {
+            yield { type: "token", token: line + "\n" };
+          }
+        }
+      }
+      if (buffer.trim()) {
+        try {
+          const data = JSON.parse(buffer) as {
+            type?: string;
+            item?: { type?: string; text?: string };
+          };
+          if (
+            data.type === "item.completed" &&
+            data.item?.type === "agent_message" &&
+            data.item.text
+          ) {
+            yield { type: "token", token: data.item.text };
+          }
+        } catch {
+          yield { type: "token", token: buffer };
+        }
       }
       yield { type: "done" };
     } catch (err: unknown) {
