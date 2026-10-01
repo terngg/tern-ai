@@ -6,24 +6,9 @@ const event = (value: unknown) => `data: ${JSON.stringify(value)}\n\n`;
 async function configure(page: Page) {
   await page.goto("/");
   await expect(page.locator("main")).toHaveAttribute("data-ready", "true");
-  await page
-    .getByRole("button", { name: "Open settings", exact: false })
-    .click();
-  const gemini = page.locator(".setting-card").filter({
-    has: page.getByRole("heading", { name: "Gemini", exact: true }),
-  });
-  await gemini.locator("input[type=password]").fill(mockKey);
-  await gemini.getByRole("button", { name: "Save key" }).click();
-  await expect(gemini.locator(".model-field select")).toContainText(
-    "Test Flash",
-  );
-  await gemini.locator(".model-field select").selectOption("mock-flash");
-  await page
-    .locator(".side-nav")
-    .getByRole("button", { name: "Chats", exact: false })
-    .click();
 }
-test("BYOK chat streams, keeps artifacts/context on reload, uploads and downloads Lua, switches models and is XSS safe", async ({
+
+test("Router chat streams, keeps artifacts/context on reload, uploads and downloads Lua, switches models and is XSS safe", async ({
   page,
 }) => {
   const requests: Array<Record<string, unknown>> = [];
@@ -74,7 +59,8 @@ test("BYOK chat streams, keeps artifacts/context on reload, uploads and download
     await page.evaluate(() => Reflect.get(window, "pwned")),
   ).toBeUndefined();
   expect(requests[0]!.history).toEqual([]);
-  expect(requests[0]!.models).toMatchObject({ gemini: "mock-flash" });
+  expect(requests[0]!.routerModel).toBe("auto");
+  expect(requests[0]!.keys).toBeUndefined();
   const downloadPromise = page.waitForEvent("download");
   await page
     .locator(".artifact-actions")
@@ -104,23 +90,8 @@ test("BYOK chat streams, keeps artifacts/context on reload, uploads and download
   });
   expect(stored).not.toContain(mockKey);
   await page
-    .getByRole("button", { name: "Settings", exact: false })
-    .first()
-    .click();
-  const gemini = page.locator(".setting-card").filter({
-    has: page.getByRole("heading", { name: "Gemini", exact: true }),
-  });
-  await expect(gemini.locator("input[type=password]")).toHaveValue("");
-  await gemini.locator("input[type=password]").fill(mockKey);
-  await gemini.getByRole("button", { name: "Save key" }).click();
-  await gemini.locator(".model-field select").selectOption("mock-next");
-  await page
-    .locator(".side-nav")
-    .getByRole("button", { name: "Chats", exact: false })
-    .click();
-  await page
-    .getByRole("combobox", { name: "Provider", exact: true })
-    .selectOption("gemini");
+    .getByRole("combobox", { name: "Routing model", exact: true })
+    .selectOption("auto/fast");
   await page.locator(".composer-tools input[type=file]").setInputFiles({
     name: "bank.lua",
     mimeType: "text/plain",
@@ -134,8 +105,8 @@ test("BYOK chat streams, keeps artifacts/context on reload, uploads and download
   expect(requests[1]!.files).toEqual([
     { name: "bank.lua", content: code, size: Buffer.byteLength(code) },
   ]);
-  expect(requests[1]!.providerMode).toBe("gemini");
-  expect(requests[1]!.models).toMatchObject({ gemini: "mock-next" });
+  expect(requests[1]!.routerModel).toBe("auto/fast");
+  expect(requests[1]!.keys).toBeUndefined();
   await page.screenshot({
     path: "test-results/tern-web-chat.png",
     fullPage: true,
@@ -208,47 +179,44 @@ test("local API explorer exposes the bundled 485 entries and mobile layout works
   });
 });
 
-test("remembering keys is opt-in and Forget/Reset clear local credentials and settings", async ({
+test("legacy remembered credentials are cleared on upgrade while chat data survives", async ({
   page,
 }) => {
-  await page.route("**/api/ai/models", (route) =>
-    route.fulfill({
-      json: { models: [{ id: "mock-flash", name: "Test Flash" }] },
-    }),
-  );
   await configure(page);
-  await page
-    .getByRole("button", { name: "Settings", exact: false })
-    .first()
-    .click();
-  const gemini = page
-    .locator(".setting-card")
-    .filter({
-      has: page.getByRole("heading", { name: "Gemini", exact: true }),
+  await page.evaluate(async (key) => {
+    const db = await new Promise<IDBDatabase>((resolve) => {
+      const r = indexedDB.open("tern-ai-web");
+      r.onsuccess = () => resolve(r.result);
     });
-  await gemini.getByRole("checkbox").check();
-  await expect(page.getByRole("status")).toContainText("remembered");
+    await new Promise<void>((resolve) => {
+      const tx = db.transaction("preferences", "readwrite");
+      tx.objectStore("preferences").put({ gemini: key }, "rememberedKeys");
+      tx.objectStore("preferences").put({ key }, "tern_router_connections_v1");
+      tx.oncomplete = () => resolve();
+    });
+    db.close();
+  }, mockKey);
   await page.reload();
   await expect(page.locator("main")).toHaveAttribute("data-ready", "true");
+  const values = await page.evaluate(async () => {
+    const db = await new Promise<IDBDatabase>((resolve) => {
+      const r = indexedDB.open("tern-ai-web");
+      r.onsuccess = () => resolve(r.result);
+    });
+    return await new Promise<string>((resolve) => {
+      const r = db
+        .transaction("preferences")
+        .objectStore("preferences")
+        .getAll();
+      r.onsuccess = () => resolve(JSON.stringify(r.result));
+    });
+  });
+  expect(values).not.toContain(mockKey);
   await page
     .getByRole("button", { name: "Settings", exact: false })
     .first()
     .click();
-  await expect(gemini.locator(".connection-tag")).toHaveText("Configured");
-  await expect(gemini.locator("input[type=password]")).toHaveValue("");
-  page.on("dialog", (dialog) => dialog.accept());
-  await page.getByRole("button", { name: "Forget remembered keys" }).click();
-  await expect(gemini.locator(".connection-tag")).toHaveText("Not connected");
-  await page.reload();
-  await expect(page.locator("main")).toHaveAttribute("data-ready", "true");
-  await page
-    .getByRole("button", { name: "Settings", exact: false })
-    .first()
-    .click();
-  await expect(gemini.locator(".connection-tag")).toHaveText("Not connected");
-  await page.getByRole("button", { name: "Reset Tern Web data" }).click();
-  await expect(page.getByRole("status")).toContainText("cleared");
-  await expect(
-    page.getByRole("button", { name: "Open settings", exact: false }),
-  ).toBeVisible();
+  await expect(page.locator(".real-router")).toContainText(
+    "Sign in to Tern AI",
+  );
 });

@@ -13,7 +13,11 @@
   overflow: hidden;
   border: 1px solid var(--line-strong);
   border-radius: 12px;
-  background: linear-gradient(135deg, rgba(21, 24, 20, 0.95) 0%, rgba(26, 30, 25, 0.9) 100%);
+  background: linear-gradient(
+    135deg,
+    rgba(21, 24, 20, 0.95) 0%,
+    rgba(26, 30, 25, 0.9) 100%
+  );
   padding: 18px 22px;
   margin-bottom: 24px;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
@@ -23,7 +27,7 @@
   position: absolute;
   inset: 0;
   opacity: 0.08;
-  background-image: 
+  background-image:
     linear-gradient(to right, var(--accent) 1px, transparent 1px),
     linear-gradient(to bottom, var(--accent) 1px, transparent 1px);
   background-size: 24px 24px;
@@ -91,8 +95,15 @@
 }
 
 @keyframes routerPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.4; transform: scale(0.85); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.4;
+    transform: scale(0.85);
+  }
 }
 
 .router-title-wrap p {
@@ -299,7 +310,12 @@
   left: 0;
   width: 100%;
   height: 1px;
-  background: linear-gradient(90deg, var(--line-strong) 0%, color-mix(in srgb, var(--accent), transparent 75%) 30%, var(--line) 100%);
+  background: linear-gradient(
+    90deg,
+    var(--line-strong) 0%,
+    color-mix(in srgb, var(--accent), transparent 75%) 30%,
+    var(--line) 100%
+  );
 }
 
 .section-head {
@@ -420,7 +436,11 @@
 
 .provider-card.card-connected {
   border-color: rgba(182, 234, 132, 0.25);
-  background: linear-gradient(180deg, rgba(26, 30, 25, 0.8) 0%, rgba(21, 24, 20, 0.95) 100%);
+  background: linear-gradient(
+    180deg,
+    rgba(26, 30, 25, 0.8) 0%,
+    rgba(21, 24, 20, 0.95) 100%
+  );
 }
 
 .provider-card.card-connected:hover {
@@ -467,8 +487,15 @@
 }
 
 @keyframes pinPulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.6; transform: scale(0.9); }
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(0.9);
+  }
 }
 
 .card-top-row {
@@ -643,8 +670,12 @@
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .drawer-panel {
@@ -661,8 +692,12 @@
 }
 
 @keyframes slideLeft {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 
 .drawer-header {
@@ -753,8 +788,14 @@
 }
 
 @keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.96); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .modal-head {
@@ -922,3 +963,432 @@
   background: var(--panel-2);
 }
 
+/* Server-backed Tern router dashboard. */
+.real-router {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 30px 36px 60px;
+  color: var(--text);
+}
+.real-router button {
+  cursor: pointer;
+}
+.real-router button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.real-router h1 {
+  font-size: 28px;
+  letter-spacing: -0.8px;
+}
+.real-router h2 {
+  font-size: 15px;
+}
+.real-router h3 {
+  font-size: 14px;
+}
+.real-router p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.real-router small {
+  color: var(--muted);
+  font-size: 11px;
+}
+.router-actions,
+.router-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.router-row h2,
+.router-row h3 {
+  margin-right: auto;
+}
+.router-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+.router-notice {
+  border: 1px solid var(--line-strong);
+  background: var(--panel-2);
+  border-radius: 10px;
+  padding: 13px 16px;
+  margin: 16px 0;
+  font-size: 13px;
+}
+.router-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 14px;
+  padding: 24px;
+  margin: 24px 0;
+  background: linear-gradient(115deg, var(--panel-2), var(--panel));
+  font-size: 12px;
+}
+.router-summary > div {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.router-summary p {
+  margin: 5px 0 0;
+}
+.router-toolbar {
+  display: flex;
+  gap: 20px;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 22px 0;
+}
+.router-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  padding: 0 12px;
+  border-radius: 9px;
+}
+.router-search input {
+  border: 0 !important;
+  background: transparent !important;
+  width: 220px;
+}
+.router-filters {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+.router-filters button {
+  border: 1px solid transparent;
+  border-radius: 7px;
+  padding: 8px 11px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+}
+.router-filters button.active {
+  background: var(--panel-2);
+  border-color: var(--line-strong);
+  color: var(--text);
+}
+.router-group {
+  margin: 30px 0;
+}
+.router-group > h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+}
+.router-group > h2 > span {
+  font-family: monospace;
+  font-size: 11px;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.router-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(245px, 1fr));
+  gap: 12px;
+}
+.real-provider-card {
+  display: block !important;
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 17px !important;
+  min-height: 137px;
+  width: 100%;
+  color: var(--text);
+}
+.real-provider-card:hover {
+  border-color: var(--accent);
+  background: var(--panel-2);
+}
+.router-card-top {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+}
+.router-card-top strong {
+  font-size: 13px;
+}
+.router-provider-icon {
+  display: grid;
+  place-items: center;
+  width: 33px;
+  height: 33px;
+  border: 1px solid var(--line-strong);
+  border-radius: 9px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  background: var(--panel-2);
+}
+.router-card-arrow {
+  margin-left: auto;
+  color: var(--muted);
+}
+.router-card-status {
+  margin: 14px 0;
+  font-size: 12px;
+}
+.router-card-bottom {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.router-panel {
+  padding: 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin: 15px 0;
+  background: var(--panel);
+}
+.router-panel h2:first-child,
+.router-panel h3:first-child {
+  margin-top: 0;
+}
+.router-auth {
+  display: flex;
+  align-items: end;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 20px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  margin: 20px 0;
+  background: var(--panel);
+}
+.router-auth > div {
+  flex: 1;
+  min-width: 220px;
+}
+.router-auth strong {
+  display: inline-block;
+  margin-left: 10px;
+}
+.real-router label {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.real-router input:not([type="checkbox"]),
+.real-router select,
+.real-router textarea,
+.router-pool-select {
+  background: var(--panel-2);
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  padding: 10px 11px;
+  border-radius: 7px;
+  font: inherit;
+  min-width: 0;
+  max-width: 100%;
+}
+.real-router textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+.router-form {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+.router-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.router-check {
+  flex-direction: row !important;
+  align-items: center;
+}
+.router-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  justify-content: flex-end;
+  background: #0009;
+  backdrop-filter: blur(3px);
+}
+.router-drawer {
+  width: min(570px, 100vw);
+  background: var(--panel);
+  border-left: 1px solid var(--line-strong);
+  padding: 24px;
+  overflow-y: auto;
+  box-shadow: -20px 0 80px #0005;
+}
+.router-drawer > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.router-drawer > header h2 {
+  font-size: 22px;
+}
+.router-drawer > .router-form {
+  margin-top: 25px;
+  border-top: 1px solid var(--line);
+  padding-top: 20px;
+}
+.router-help {
+  max-width: 850px;
+}
+.router-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-top: 20px;
+}
+.router-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+  text-align: left;
+}
+.router-table th {
+  color: var(--muted);
+  font-weight: 500;
+  background: var(--panel-2);
+}
+.router-table th,
+.router-table td {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.router-table small {
+  display: block;
+  margin-top: 6px;
+  max-width: 250px;
+  overflow-wrap: anywhere;
+}
+.router-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 45px 20px;
+  color: var(--muted);
+  min-height: 180px;
+}
+.router-graph {
+  overflow-x: auto;
+}
+.router-graph svg {
+  width: 100%;
+  min-width: 650px;
+  max-height: 1500px;
+  color: var(--muted);
+}
+.router-graph rect {
+  fill: var(--panel-2);
+  stroke: var(--line-strong);
+}
+.router-graph text {
+  fill: var(--text);
+  font: 13px sans-serif;
+}
+.router-graph .route-detail {
+  font-size: 10px;
+  fill: var(--muted);
+}
+.route-edge {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+}
+.route-disabled {
+  opacity: 0.4;
+}
+.route-cooldown .route-edge {
+  stroke: #dca848;
+}
+.router-pool-select {
+  font-size: 11px;
+  max-width: 170px;
+}
+.real-router details {
+  font-size: 12px;
+  line-height: 1.8;
+  overflow-wrap: anywhere;
+}
+.real-router summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+@media (min-width: 1500px) {
+  .router-card-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+@media (max-width: 760px) {
+  .real-router {
+    padding: 20px 16px 50px;
+  }
+  .router-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+  }
+  .real-provider-card {
+    padding: 12px !important;
+  }
+  .router-card-top {
+    gap: 7px;
+  }
+  .router-card-top strong {
+    font-size: 12px;
+  }
+  .router-card-bottom {
+    flex-direction: column;
+  }
+  .router-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 17px;
+  }
+  .router-two-col {
+    grid-template-columns: 1fr;
+  }
+  .router-auth {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .router-drawer {
+    padding: 20px;
+  }
+  .router-pool-select {
+    max-width: 105px;
+  }
+  .router-filters {
+    gap: 0;
+  }
+  .router-filters button {
+    padding: 7px 8px;
+  }
+}
+@media (max-width: 380px) {
+  .router-card-grid {
+    grid-template-columns: 1fr;
+  }
+}

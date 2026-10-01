@@ -5,7 +5,7 @@ import "./providers.css";
 export const metadata: Metadata = {
   title: "Tern AI — GTPS Lua Assistant",
   description:
-    "A focused GTPS Lua coding assistant powered by your own Gemini or OpenRouter API key.",
+    "A GTPS Lua coding assistant with private provider connections, multi-account routing, and local Lua validation.",
   applicationName: "Tern AI",
   referrer: "strict-origin-when-cross-origin",
 };

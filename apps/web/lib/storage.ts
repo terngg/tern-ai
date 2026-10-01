@@ -32,7 +32,7 @@ export interface WebMessage {
     }>;
     apiCount?: number;
   };
-  provider?: "gemini" | "openrouter";
+  provider?: string;
   model?: string;
   pending?: boolean;
   error?: string;

@@ -26,19 +26,11 @@ import {
   titleFromPrompt,
 } from "@/lib/context";
 import { importConversation } from "@/lib/import-chat";
-import { maskSecret, redactSecrets } from "@/lib/secrets";
-import { ProvidersView } from "./components/providers/ProvidersView";
-import { ProxyPoolsView } from "./components/providers/ProxyPoolsView";
-import { RoutingCombosView } from "./components/providers/RoutingCombosView";
-import { UsageLogsView } from "./components/providers/UsageLogsView";
-
-type Provider = "gemini" | "openrouter";
-type ApiModel = {
-  id: string;
-  name: string;
-  free?: boolean;
-  contextLength?: number;
-};
+import { redactSecrets } from "@/lib/secrets";
+import {
+  RouterDashboard,
+  RouterSelector,
+} from "./components/providers/RouterDashboard";
 type Screen =
   | "chat"
   | "settings"
@@ -46,15 +38,10 @@ type Screen =
   | "providers"
   | "pools"
   | "routing"
-  | "usage";
-const KEY_NAMES: Record<Provider, string> = {
-  gemini: "Gemini",
-  openrouter: "OpenRouter",
-};
-const KEY_HINT: Record<Provider, string> = {
-  gemini: "AIza…",
-  openrouter: "sk-or-…",
-};
+  | "usage"
+  | "models"
+  | "quota"
+  | "requests";
 const LIMIT = 16_384;
 function uid(): string {
   return crypto.randomUUID();
@@ -197,22 +184,8 @@ export default function Home() {
   const [chats, setChats] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState("");
   const [settings, setSettings] = useState<LocalSettings>(defaultSettings);
-  const [keys, setKeys] = useState<Record<Provider, string>>({
-    gemini: "",
-    openrouter: "",
-  });
-  const [keySaved, setKeySaved] = useState<Record<Provider, boolean>>({
-    gemini: false,
-    openrouter: false,
-  });
-  const [models, setModels] = useState<Record<Provider, ApiModel[]>>({
-    gemini: [],
-    openrouter: [],
-  });
-  const [modelLoading, setModelLoading] = useState<Record<Provider, boolean>>({
-    gemini: false,
-    openrouter: false,
-  });
+  const [routerModel, setRouterModel] = useState("auto");
+  const [routerPool, setRouterPool] = useState("");
   const [notice, setNotice] = useState("");
   const [progress, setProgress] = useState("");
   const [busy, setBusy] = useState(false);
@@ -243,7 +216,7 @@ export default function Home() {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const active = chats.find((c) => c.id === activeId);
-  const hasProvider = !!keys.gemini || !!keys.openrouter;
+
   const groups = useMemo(() => {
     const result: Record<string, Conversation[]> = {};
     for (const chat of chats) {
@@ -256,33 +229,17 @@ export default function Home() {
   useEffect(() => {
     void (async () => {
       try {
-        const [storedChats, prefs, savedSettings] = await Promise.all([
+        const [storedChats, savedSettings] = await Promise.all([
           chatStorage.all(),
-          preferences.get<Record<Provider, string>>("rememberedKeys"),
           preferences.get<LocalSettings>("settings"),
         ]);
         setChats(storedChats);
         setSettings({ ...defaultSettings, ...savedSettings });
-        if (savedSettings?.rememberGemini && prefs?.gemini) {
-          setKeys((k) => ({ ...k, gemini: prefs.gemini }));
-          setKeySaved((k) => ({ ...k, gemini: true }));
-        }
-        if (savedSettings?.rememberOpenrouter && prefs?.openrouter) {
-          setKeys((k) => ({ ...k, openrouter: prefs.openrouter }));
-          setKeySaved((k) => ({ ...k, openrouter: true }));
-        }
+        // Erase legacy browser credentials. Users explicitly re-enter keys into encrypted server storage.
+        await preferences.put("rememberedKeys", {});
+        await preferences.put("tern_router_connections_v1", {});
+        await preferences.put("tern_router_custom_providers_v1", []);
         if (storedChats[0]) setActiveId(storedChats[0].id);
-        const cached = await Promise.all(
-          (["gemini", "openrouter"] as Provider[]).map(async (provider) => ({
-            provider,
-            cache: await preferences.get<{ at: number; models: ApiModel[] }>(
-              `models:${provider}`,
-            ),
-          })),
-        );
-        for (const { provider, cache } of cached)
-          if (cache && Date.now() - cache.at < 6 * 60 * 60 * 1000)
-            setModels((v) => ({ ...v, [provider]: cache.models }));
       } catch (e) {
         setNotice(
           e instanceof Error ? e.message : "Could not open local chat storage.",
@@ -298,6 +255,9 @@ export default function Home() {
               "settings",
               "apis",
               "providers",
+              "models",
+              "quota",
+              "requests",
               "pools",
               "routing",
               "usage",
@@ -329,23 +289,17 @@ export default function Home() {
         })
         .catch(() => setNotice("Could not load GTPS API documentation."));
   }, [screen, apiItems.length]);
-  const updateChat = useCallback(
-    async (chat: Conversation) => {
-      const saved = JSON.parse(
-        redactSecrets(
-          JSON.stringify({ ...chat, updatedAt: Date.now() }),
-          Object.values(keys),
-        ),
-      ) as Conversation;
-      setChats((prev) =>
-        [saved, ...prev.filter((c) => c.id !== saved.id)].sort(
-          (a, b) => b.updatedAt - a.updatedAt,
-        ),
-      );
-      await chatStorage.put(saved, Object.values(keys));
-    },
-    [keys],
-  );
+  const updateChat = useCallback(async (chat: Conversation) => {
+    const saved = JSON.parse(
+      redactSecrets(JSON.stringify({ ...chat, updatedAt: Date.now() }), []),
+    ) as Conversation;
+    setChats((prev) =>
+      [saved, ...prev.filter((c) => c.id !== saved.id)].sort(
+        (a, b) => b.updatedAt - a.updatedAt,
+      ),
+    );
+    await chatStorage.put(saved, []);
+  }, []);
   const createChat = useCallback(() => {
     const chat = freshChat();
     setChats((prev) => [chat, ...prev]);
@@ -359,148 +313,6 @@ export default function Home() {
     setActiveId(chat.id);
     setScreen("chat");
     setMobileNav(false);
-  };
-  const changeProviderMode = (mode: LocalSettings["providerMode"]) => {
-    setSettings((s) => {
-      const next = { ...s, providerMode: mode };
-      void preferences.put("settings", next);
-      return next;
-    });
-  };
-  const changeKey = (provider: Provider, value: string) => {
-    setKeys((prev) => ({ ...prev, [provider]: value }));
-    setKeySaved((prev) => ({ ...prev, [provider]: false }));
-  };
-  const rememberKey = async (provider: Provider, remember: boolean) => {
-    const enabled =
-      provider === "gemini"
-        ? { rememberGemini: remember }
-        : { rememberOpenrouter: remember };
-    setSettings((s) => ({ ...s, ...enabled }));
-    const updated = { ...settings, ...enabled };
-    await preferences.put("settings", updated);
-    const existing: Partial<Record<Provider, string>> =
-      (await preferences.get<Record<Provider, string>>("rememberedKeys")) || {};
-    if (remember && keys[provider])
-      await preferences.put("rememberedKeys", {
-        ...existing,
-        [provider]: keys[provider],
-      });
-    else {
-      delete existing[provider];
-      await preferences.put("rememberedKeys", existing);
-    }
-    setKeySaved((v) => ({ ...v, [provider]: remember && !!keys[provider] }));
-    setNotice(
-      remember
-        ? "Key remembered in this browser."
-        : "Key will be used for this session only.",
-    );
-  };
-  const saveKey = async (provider: Provider) => {
-    const key = keys[provider].trim();
-    if (key.length < 20) {
-      setNotice(`Enter a valid ${KEY_NAMES[provider]} API key.`);
-      return;
-    }
-    setKeys((prev) => ({ ...prev, [provider]: key }));
-    if (
-      provider === "gemini"
-        ? settings.rememberGemini
-        : settings.rememberOpenrouter
-    ) {
-      const saved =
-        (await preferences.get<Record<Provider, string>>("rememberedKeys")) ||
-        {};
-      await preferences.put("rememberedKeys", { ...saved, [provider]: key });
-    }
-    setKeySaved((v) => ({ ...v, [provider]: true }));
-    void loadModels(provider, true, key);
-    setNotice(`${KEY_NAMES[provider]} key saved on this device.`);
-  };
-  const testProvider = async (provider: Provider) => {
-    const key = keys[provider].trim();
-    if (!key) {
-      setNotice(`Add a ${KEY_NAMES[provider]} key first.`);
-      return;
-    }
-    setNotice(`Testing ${KEY_NAMES[provider]} connection…`);
-    try {
-      const model =
-        provider === "gemini" ? settings.geminiModel : settings.openrouterModel;
-      const response = await fetch("/api/ai/test", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, key, model }),
-      });
-      const data = await response.json();
-      if (!response.ok)
-        throw new Error(data.error || "Connection test failed.");
-      setNotice(`${KEY_NAMES[provider]} connection is ready.`);
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Connection test failed.");
-    }
-  };
-  const loadModels = async (
-    provider: Provider,
-    refresh = false,
-    keyOverride?: string,
-  ) => {
-    const key = (keyOverride ?? keys[provider]).trim();
-    if (!key) {
-      setNotice(`Add a ${KEY_NAMES[provider]} key to load models.`);
-      return;
-    }
-    setModelLoading((v) => ({ ...v, [provider]: true }));
-    try {
-      const cache = await preferences.get<{ at: number; models: ApiModel[] }>(
-        `models:${provider}`,
-      );
-      if (!refresh && cache && Date.now() - cache.at < 6 * 60 * 60 * 1000) {
-        setModels((v) => ({ ...v, [provider]: cache.models }));
-        return;
-      }
-      const response = await fetch("/api/ai/models", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ provider, key }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Could not load models.");
-      const list = Array.isArray(data.models)
-        ? (data.models as ApiModel[])
-        : [];
-      if (
-        provider === "openrouter" &&
-        !list.some((m) => m.id === "openrouter/free")
-      )
-        list.unshift({
-          id: "openrouter/free",
-          name: "Free Models Router",
-          free: true,
-        });
-      setModels((v) => ({ ...v, [provider]: list }));
-      await preferences.put(`models:${provider}`, {
-        at: Date.now(),
-        models: list,
-      });
-      if (list.length > 0 && provider === "gemini") {
-        if (!list.some((m) => m.id === settings.geminiModel)) {
-          const preferred =
-            list.find((m) => m.id === "gemini-2.5-flash") ||
-            list.find((m) => m.id === "gemini-2.0-flash") ||
-            list.find((m) => m.id.includes("flash")) ||
-            list[0];
-          if (preferred) {
-            setSettings((s) => ({ ...s, geminiModel: preferred.id }));
-          }
-        }
-      }
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : "Could not load models.");
-    } finally {
-      setModelLoading((v) => ({ ...v, [provider]: false }));
-    }
   };
   const addFiles = async (list: FileList | null) => {
     if (!list) return;
@@ -524,8 +336,8 @@ export default function Home() {
         continue;
       }
       added.push({
-        name: redactSecrets(file.name, Object.values(keys)),
-        content: redactSecrets(content, Object.values(keys)),
+        name: redactSecrets(file.name, []),
+        content: redactSecrets(content, []),
         size: file.size,
       });
       sum += file.size;
@@ -534,7 +346,7 @@ export default function Home() {
   };
   const send = async (event?: FormEvent) => {
     event?.preventDefault();
-    const prompt = redactSecrets(draft.trim(), Object.values(keys));
+    const prompt = redactSecrets(draft.trim(), []);
     if ((!prompt && !files.length) || busy) return;
     let conversation = active;
     if (!conversation) {
@@ -542,13 +354,7 @@ export default function Home() {
       setChats((prev) => [conversation!, ...prev]);
       setActiveId(conversation.id);
     }
-    if (!hasProvider) {
-      setNotice(
-        "Connect Gemini or OpenRouter in Settings before sending a request.",
-      );
-      setScreen("settings");
-      return;
-    }
+
     const original = conversation;
     const user: WebMessage = {
       id: uid(),
@@ -586,20 +392,8 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         signal: controller.signal,
         body: JSON.stringify({
-          providerMode: settings.providerMode,
-          keys: {
-            gemini: keys.gemini.trim(),
-            openrouter: keys.openrouter.trim(),
-          },
-          models: {
-            gemini: settings.geminiModel,
-            openrouter: settings.openrouterModel,
-          },
-          openrouterExplicit:
-            settings.openrouterModel !== "openrouter/free" &&
-            settings.openrouterModel.endsWith(":free")
-              ? true
-              : settings.openrouterModel !== "openrouter/free",
+          routerModel,
+          poolId: routerPool,
           task,
           prompt: user.content,
           history: ctx.history,
@@ -692,7 +486,7 @@ export default function Home() {
                       apiCount: Number(data.apiCount) || 0,
                     } as WebMessage["validation"])
                   : undefined,
-              provider: data.provider as Provider,
+              provider: data.provider as string,
               model: String(data.model || ""),
               pending: false,
             });
@@ -764,17 +558,14 @@ export default function Home() {
   const exportChat = (chat: Conversation) =>
     saveDownload(
       `${chat.title.replace(/[^\p{L}\p{N}-]+/gu, "_").slice(0, 40) || "tern-chat"}.json`,
-      redactSecrets(JSON.stringify(chat, null, 2), Object.values(keys)),
+      redactSecrets(JSON.stringify(chat, null, 2), []),
     );
   const importChat = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     try {
       if (file.size > 1_000_000) throw new Error("Chat export is too large.");
-      const imported = importConversation(
-        await file.text(),
-        Object.values(keys),
-      );
+      const imported = importConversation(await file.text(), []);
       await updateChat(imported);
       setActiveId(imported.id);
       setScreen("chat");
@@ -783,25 +574,6 @@ export default function Home() {
       setNotice(e instanceof Error ? e.message : "Could not import chat.");
     }
     event.target.value = "";
-  };
-  const forgetKeys = async () => {
-    const confirmed = window.confirm(
-      "Forget all remembered API keys on this device? This also disconnects them in this browser.",
-    );
-    if (!confirmed) return;
-    const remembered =
-      await preferences.get<Record<Provider, string>>("rememberedKeys");
-    await preferences.put("rememberedKeys", {});
-    setKeys({ gemini: "", openrouter: "" });
-    setKeySaved({ gemini: false, openrouter: false });
-    setSettings((s) => ({
-      ...s,
-      rememberGemini: false,
-      rememberOpenrouter: false,
-    }));
-    setNotice(
-      `Forgot ${remembered ? Object.keys(remembered).length : 0} remembered key(s).`,
-    );
   };
   const clearChats = async () => {
     if (busy) {
@@ -830,10 +602,7 @@ export default function Home() {
     await preferences.clear();
     setChats([]);
     setActiveId("");
-    setKeys({ gemini: "", openrouter: "" });
     setSettings(defaultSettings);
-    setKeySaved({ gemini: false, openrouter: false });
-    setModels({ gemini: [], openrouter: [] });
     setFiles([]);
     setDraft("");
     setTask("chat");
@@ -890,28 +659,59 @@ export default function Home() {
           </button>
           <button
             className={screen === "providers" ? "nav-active" : ""}
-            onClick={() => setScreen("providers")}
+            onClick={() => {
+              setScreen("providers");
+              setMobileNav(false);
+            }}
           >
             <span>⚡</span> Providers
           </button>
           <button
             className={screen === "pools" ? "nav-active" : ""}
-            onClick={() => setScreen("pools")}
+            onClick={() => {
+              setScreen("pools");
+              setMobileNav(false);
+            }}
           >
             <span>⑆</span> Proxy Pools
           </button>
           <button
             className={screen === "routing" ? "nav-active" : ""}
-            onClick={() => setScreen("routing")}
+            onClick={() => {
+              setScreen("routing");
+              setMobileNav(false);
+            }}
           >
-            <span>⇄</span> Routing / Combos
+            <span>⇄</span> Routing
           </button>
           <button
             className={screen === "usage" ? "nav-active" : ""}
-            onClick={() => setScreen("usage")}
+            onClick={() => {
+              setScreen("usage");
+              setMobileNav(false);
+            }}
           >
-            <span>◷</span> Usage & Logs
+            <span>◷</span> Usage
           </button>
+          {(
+            [
+              ["models", "Models"],
+              ["quota", "Quota"],
+              ["requests", "Requests"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={screen === id ? "nav-active" : ""}
+              onClick={() => {
+                setScreen(id);
+                setMobileNav(false);
+              }}
+            >
+              <span>◇</span>
+              {label}
+            </button>
+          ))}
           <button
             className={screen === "apis" ? "nav-active" : ""}
             onClick={() => setScreen("apis")}
@@ -965,9 +765,7 @@ export default function Home() {
           >
             <span>⚙</span> Settings
           </button>
-          <div className="privacy-mini">
-            <span className="local-dot" /> Router Hub: Active • Vercel Edge
-          </div>
+          <div className="privacy-mini">Chat history stored on this device</div>
           <button
             className="import-chat"
             onClick={() => document.getElementById("import-chat")?.click()}
@@ -1020,9 +818,9 @@ export default function Home() {
                     : screen === "pools"
                       ? "Proxy Pools"
                       : screen === "routing"
-                        ? "Routing / Combos"
+                        ? "Routing"
                         : screen === "usage"
-                          ? "Usage & Logs"
+                          ? "Usage"
                           : "GTPS API"}
             </span>
             <span className="top-context">
@@ -1032,29 +830,14 @@ export default function Home() {
             </span>
           </div>
           <div className="top-right">
-            <label className="provider-pill">
-              <span className="provider-status" />{" "}
-              <select
-                aria-label="Provider"
-                value={settings.providerMode}
-                onChange={(e) =>
-                  changeProviderMode(
-                    e.target.value as LocalSettings["providerMode"],
-                  )
-                }
-              >
-                <option value="auto">Auto</option>
-                <option value="gemini">Gemini</option>
-                <option value="openrouter">OpenRouter</option>
-              </select>
-            </label>
-            <span className="top-model">
-              {settings.providerMode === "openrouter"
-                ? settings.openrouterModel
-                : settings.providerMode === "gemini"
-                  ? settings.geminiModel
-                  : "Gemini → OpenRouter"}
-            </span>
+            <RouterSelector
+              model={routerModel}
+              pool={routerPool}
+              onChange={(model, pool) => {
+                setRouterModel(model);
+                setRouterPool(pool);
+              }}
+            />
             <button
               className="icon-btn theme-btn"
               title="Toggle theme"
@@ -1071,238 +854,15 @@ export default function Home() {
         </header>
         {screen === "settings" ? (
           <div className="page-scroll">
+            <RouterDashboard screen="settings" />
             <section className="settings-page">
-              <div className="page-heading">
-                <div>
-                  <span className="eyebrow">PREFERENCES</span>
-                  <h1>Settings</h1>
-                  <p>
-                    Connect your own AI provider. Tern has no account system or
-                    shared API keys.
-                  </p>
-                </div>
-              </div>
-              <div className="settings-grid">
-                {(["gemini", "openrouter"] as Provider[]).map((provider) => (
-                  <article className="setting-card" key={provider}>
-                    <div className="setting-card-head">
-                      <div className={`provider-logo ${provider}`}>
-                        {provider === "gemini" ? "✳" : "◈"}
-                      </div>
-                      <div>
-                        <h2>{KEY_NAMES[provider]}</h2>
-                        <p>
-                          {provider === "gemini"
-                            ? "Google Gemini API"
-                            : "OpenRouter API"}
-                        </p>
-                      </div>
-                      <span
-                        className={`connection-tag ${keys[provider] ? "connected" : ""}`}
-                      >
-                        {keys[provider] ? "Configured" : "Not connected"}
-                      </span>
-                    </div>
-                    <label className="field-label" htmlFor={`${provider}-key`}>
-                      API key
-                    </label>
-                    <div className="key-field">
-                      <input
-                        id={`${provider}-key`}
-                        type="password"
-                        autoComplete="off"
-                        spellCheck={false}
-                        placeholder={
-                          keySaved[provider]
-                            ? maskSecret(keys[provider])
-                            : KEY_HINT[provider]
-                        }
-                        value={keySaved[provider] ? "" : keys[provider]}
-                        onChange={(e) => changeKey(provider, e.target.value)}
-                        onFocus={() => {
-                          if (keySaved[provider])
-                            setKeySaved((s) => ({ ...s, [provider]: false }));
-                        }}
-                      />
-                      <button
-                        className="secondary-btn"
-                        onClick={() => void saveKey(provider)}
-                      >
-                        Save key
-                      </button>
-                    </div>
-                    <div className="setting-actions">
-                      <button
-                        className="text-btn"
-                        onClick={() => void testProvider(provider)}
-                      >
-                        Test connection
-                      </button>
-                      <button
-                        className="text-btn"
-                        onClick={() => void loadModels(provider, true)}
-                      >
-                        {modelLoading[provider] ? "Loading…" : "Refresh models"}
-                      </button>
-                    </div>
-                    <label
-                      className="field-label model-label"
-                      htmlFor={`${provider}-model`}
-                    >
-                      Model
-                    </label>
-                    <div className="model-field">
-                      <select
-                        id={`${provider}-model`}
-                        value={
-                          provider === "gemini"
-                            ? settings.geminiModel
-                            : settings.openrouterModel
-                        }
-                        onChange={(e) =>
-                          setSettings((s) =>
-                            provider === "gemini"
-                              ? { ...s, geminiModel: e.target.value }
-                              : { ...s, openrouterModel: e.target.value },
-                          )
-                        }
-                      >
-                        {!models[provider].some(
-                          (m) =>
-                            m.id ===
-                            (provider === "gemini"
-                              ? defaultSettings.geminiModel
-                              : defaultSettings.openrouterModel),
-                        ) && (
-                          <option
-                            value={
-                              provider === "gemini"
-                                ? defaultSettings.geminiModel
-                                : defaultSettings.openrouterModel
-                            }
-                          >
-                            {provider === "gemini"
-                              ? `${defaultSettings.geminiModel} · Flash`
-                              : "openrouter/free · Free"}
-                          </option>
-                        )}
-                        {models[provider].map((m) => (
-                          <option key={m.id} value={m.id}>
-                            {m.name}
-                            {provider === "openrouter"
-                              ? m.free
-                                ? " · Free"
-                                : " · Paid"
-                              : ""}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        className="icon-btn refresh-btn"
-                        title="Refresh model list"
-                        onClick={() => void loadModels(provider, true)}
-                      >
-                        ↻
-                      </button>
-                    </div>
-                    {provider === "openrouter" &&
-                      settings.openrouterModel !== "openrouter/free" &&
-                      !settings.openrouterModel.endsWith(":free") && (
-                        <div className="paid-warning">
-                          Paid model · usage may incur charges from OpenRouter.
-                        </div>
-                      )}
-                    <label className="remember-row">
-                      <input
-                        type="checkbox"
-                        checked={
-                          provider === "gemini"
-                            ? settings.rememberGemini
-                            : settings.rememberOpenrouter
-                        }
-                        onChange={(e) =>
-                          void rememberKey(provider, e.target.checked)
-                        }
-                      />
-                      <span>
-                        <strong>Remember API key on this device</strong>
-                        <small>
-                          Stored locally; apps on this origin can access it. Use
-                          a personal device only.
-                        </small>
-                      </span>
-                    </label>
-                    <div className="security-note">
-                      Your key is sent to this Tern server endpoint only when
-                      you make a provider request. It is not added to chat
-                      history or stored on Tern servers.
-                    </div>
-                  </article>
-                ))}
-              </div>
-              <article className="setting-card preference-card">
-                <div className="card-title">
-                  <div>
-                    <span className="eyebrow">CHAT</span>
-                    <h2>Provider behavior</h2>
-                  </div>
-                </div>
-                <label className="field-label">Provider mode</label>
-                <select
-                  className="wide-select"
-                  value={settings.providerMode}
-                  onChange={(e) =>
-                    changeProviderMode(
-                      e.target.value as LocalSettings["providerMode"],
-                    )
-                  }
-                >
-                  <option value="auto">Auto · Gemini, then OpenRouter</option>
-                  <option value="gemini">Gemini only</option>
-                  <option value="openrouter">OpenRouter only</option>
-                </select>
-                <p className="helper-text">
-                  Auto fallback uses only providers you connected. OpenRouter
-                  fallback defaults to its free router. A paid model is used
-                  only after you select it here.
-                </p>
-                <label className="field-label theme-label">Appearance</label>
-                <select
-                  className="wide-select"
-                  value={settings.theme}
-                  onChange={(e) =>
-                    setSettings((s) => ({
-                      ...s,
-                      theme: e.target.value as LocalSettings["theme"],
-                    }))
-                  }
-                >
-                  <option value="system">System</option>
-                  <option value="dark">Dark</option>
-                  <option value="light">Light</option>
-                </select>
-              </article>
-              <article className="setting-card privacy-card">
-                <div className="card-title">
-                  <div>
-                    <span className="eyebrow">PRIVACY & DATA</span>
-                    <h2>Your data stays yours</h2>
-                  </div>
-                  <span className="local-icon">⌂</span>
-                </div>
+              <article className="setting-card">
+                <h2>Browser data</h2>
                 <p>
-                  Chat history and uploaded files are stored in this browser’s
-                  IndexedDB. Tern does not maintain user accounts or a central
-                  chat-history database. API keys are sent through this server
-                  endpoint to your selected AI provider for each request.
+                  Chats and attachments stay in this browser. Provider
+                  credentials live in your encrypted account storage.
                 </p>
                 <div className="privacy-buttons">
-                  <button
-                    className="secondary-btn"
-                    onClick={() => void forgetKeys()}
-                  >
-                    Forget remembered keys
-                  </button>
                   <button
                     className="secondary-btn"
                     onClick={() => void clearChats()}
@@ -1339,9 +899,7 @@ export default function Home() {
                     and validation.
                   </p>
                 </div>
-                <span className="entry-count">
-                  {apiItems.length || 485} entries
-                </span>
+                <span className="entry-count">{apiItems.length} entries</span>
               </div>
               <div className="api-search">
                 <span>⌕</span>
@@ -1421,31 +979,15 @@ export default function Home() {
               </div>
             </section>
           </div>
-        ) : screen === "providers" ? (
+        ) : screen === "providers" ||
+          screen === "pools" ||
+          screen === "routing" ||
+          screen === "usage" ||
+          screen === "models" ||
+          screen === "quota" ||
+          screen === "requests" ? (
           <div className="page-scroll">
-            <ProvidersView
-              settings={settings}
-              onUpdateSettings={(s) =>
-                setSettings((prev) => ({ ...prev, ...s }))
-              }
-              rememberedKeys={keys}
-              onSyncKeys={(provider, key) => {
-                setKeys((prev) => ({ ...prev, [provider]: key }));
-                setKeySaved((prev) => ({ ...prev, [provider]: true }));
-              }}
-            />
-          </div>
-        ) : screen === "pools" ? (
-          <div className="page-scroll">
-            <ProxyPoolsView />
-          </div>
-        ) : screen === "routing" ? (
-          <div className="page-scroll">
-            <RoutingCombosView />
-          </div>
-        ) : screen === "usage" ? (
-          <div className="page-scroll">
-            <UsageLogsView />
+            <RouterDashboard screen={screen} />
           </div>
         ) : (
           <>
@@ -1482,14 +1024,13 @@ export default function Home() {
                     Generate, fix, review, and understand Lua scripts with
                     Tern’s local GTPS API knowledge base.
                   </p>
-                  {!hasProvider && (
+                  {
                     <div className="connect-prompt">
                       <span className="connect-light" />
                       <div>
                         <strong>Connect an AI provider to start</strong>
                         <small>
-                          Use your own Gemini or OpenRouter API key. No account
-                          required.
+                          Sign in and add an encrypted provider connection.
                         </small>
                       </div>
                       <button
@@ -1499,7 +1040,7 @@ export default function Home() {
                         Open settings <span>↗</span>
                       </button>
                     </div>
-                  )}
+                  }
                   <div className="quick-actions">
                     <button onClick={() => action("generate")}>
                       <span>✳</span>
@@ -1544,7 +1085,7 @@ export default function Home() {
                           </strong>
                           {message.provider && (
                             <span>
-                              {KEY_NAMES[message.provider]} · {message.model}
+                              {message.provider} · {message.model}
                             </span>
                           )}
                         </div>

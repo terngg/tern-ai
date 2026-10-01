@@ -1,4 +1,4 @@
-# Deploy application sources only. Provider credentials are always request-scoped.
+# Deploy application sources only. Server environment credentials are never uploaded as source.
 .git
 .codex
 .agents
