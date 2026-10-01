@@ -1,20 +1,20 @@
 :root {
   color-scheme: dark;
-  --bg: #10120f;
-  --panel: #151814;
-  --panel-2: #1a1e19;
-  --panel-3: #20241f;
-  --line: #292e28;
-  --line-strong: #353b33;
-  --text: #e7e9e2;
-  --muted: #92988e;
-  --subtle: #687064;
-  --accent: #c9f277;
-  --accent-ink: #151b0d;
-  --blue: #91baff;
-  --red: #ff8980;
-  --amber: #f3ca76;
-  --green: #b6ea84;
+  --bg: #191918;
+  --panel: #242423;
+  --panel-2: #2f2f2e;
+  --panel-3: #383837;
+  --line: #333333;
+  --line-strong: #3f3f3e;
+  --text: #EDEDED;
+  --muted: #9CA3AF;
+  --subtle: #6B7280;
+  --accent: #E56A4A;
+  --accent-ink: #ffffff;
+  --blue: #60a5fa;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --green: #22c55e;
   --radius: 12px;
   --mono: ui-monospace, "SFMono-Regular", Consolas, monospace;
   --sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -23,21 +23,21 @@
 }
 :root[data-theme="light"] {
   color-scheme: light;
-  --bg: #f6f7f4;
-  --panel: #fff;
-  --panel-2: #f0f2ed;
-  --panel-3: #e9ece6;
-  --line: #e3e6df;
-  --line-strong: #d2d7ce;
-  --text: #252b22;
-  --muted: #737b6f;
-  --subtle: #92998e;
-  --accent: #77a830;
-  --accent-ink: #fff;
-  --blue: #386fb7;
-  --red: #c34e42;
-  --amber: #9c6a11;
-  --green: #528c22;
+  --bg: #FDFAF6;
+  --panel: #ffffff;
+  --panel-2: #f4f4f5;
+  --panel-3: #e7e7e9;
+  --line: #e5e7eb;
+  --line-strong: #d1d5db;
+  --text: #0a0a0a;
+  --muted: #6B7280;
+  --subtle: #9CA3AF;
+  --accent: #E56A4A;
+  --accent-ink: #ffffff;
+  --blue: #3b82f6;
+  --red: #ef4444;
+  --amber: #f59e0b;
+  --green: #10b981;
 }
 @media (prefers-color-scheme: light) {
   :root[data-theme="system"] {
@@ -102,57 +102,79 @@ select:focus-visible {
   background: var(--bg);
 }
 .sidebar {
-  width: 252px;
-  flex: 0 0 252px;
+  width: 272px;
+  flex: 0 0 272px;
   display: flex;
   flex-direction: column;
   background: var(--panel);
   border-right: 1px solid var(--line);
-  padding: 18px 12px 12px;
+  padding: 14px 12px 12px;
   z-index: 30;
 }
+.sidebar-traffic-lights {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 4px 8px 14px;
+}
+.traffic-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.traffic-red { background: #FF5F56; }
+.traffic-amber { background: #FFBD2E; }
+.traffic-green { background: #27C93F; }
+
 .brand {
-  height: 45px;
+  height: 44px;
   display: flex;
   align-items: center;
   gap: 11px;
   padding: 0 8px;
-  margin-bottom: 22px;
+  margin-bottom: 16px;
 }
-.tern-mark,
-.welcome-mark span {
-  width: 31px;
-  height: 31px;
+.brand-logo-icon {
+  width: 36px;
+  height: 36px;
   border-radius: 10px;
-  background: var(--accent);
-  color: var(--accent-ink);
-  font-family: var(--display);
-  font-size: 25px;
-  font-weight: 800;
-  line-height: 32px;
-  text-align: center;
-  display: inline-block;
+  background: linear-gradient(135deg, #ea7855 0%, #a64027 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(229, 106, 74, 0.25);
+  flex-shrink: 0;
 }
-.brand strong {
+.brand-text strong {
   font-family: var(--display);
   font-size: 14px;
-  letter-spacing: -0.3px;
-}
-.brand small {
+  font-weight: 600;
+  letter-spacing: -0.2px;
+  color: var(--text);
   display: block;
-  margin-top: 1px;
+  line-height: 1.2;
+}
+.brand-text small {
+  display: block;
   color: var(--muted);
-  font-size: 10px;
-  letter-spacing: 0.35px;
+  font-size: 11px;
+  line-height: 1.2;
 }
 .icon-btn {
   border: 0;
   background: transparent;
   color: var(--muted);
-  width: 31px;
-  height: 31px;
-  border-radius: 7px;
-  font-size: 17px;
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  font-size: 15px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 .icon-btn:hover {
   background: var(--panel-3);
@@ -166,24 +188,24 @@ select:focus-visible {
   display: flex;
   align-items: center;
   gap: 9px;
-  height: 38px;
-  padding: 0 10px;
+  height: 36px;
+  padding: 0 12px;
   border: 1px solid var(--line-strong);
   border-radius: 8px;
   background: var(--panel);
+  color: var(--text);
   text-align: left;
-  font-weight: 600;
-  font-size: 12px;
+  font-weight: 500;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 .new-chat:hover {
   background: var(--panel-2);
-  border-color: var(--subtle);
+  border-color: rgba(229, 106, 74, 0.4);
 }
-.new-chat b {
-  font-size: 19px;
-  font-weight: 400;
+.new-chat svg {
   color: var(--accent);
-  line-height: 1;
 }
 .new-chat kbd,
 .api-search kbd {
@@ -197,8 +219,8 @@ select:focus-visible {
 }
 .side-nav {
   display: grid;
-  gap: 3px;
-  margin-top: 22px;
+  gap: 2px;
+  margin-top: 16px;
 }
 .side-nav button,
 .sidebar-bottom > button {
@@ -206,26 +228,27 @@ select:focus-visible {
   height: 34px;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 11px;
   padding: 0 10px;
   border: 0;
-  border-radius: 7px;
+  border-radius: 8px;
   background: transparent;
   color: var(--muted);
   text-align: left;
-  font-size: 12px;
-}
-.side-nav button span,
-.sidebar-bottom > button span {
-  width: 15px;
-  text-align: center;
-  font-size: 15px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
 }
 .side-nav button:hover,
-.sidebar-bottom > button:hover,
-.nav-active {
-  background: var(--panel-3) !important;
+.sidebar-bottom > button:hover {
+  background: var(--panel-2) !important;
   color: var(--text) !important;
+}
+.nav-active {
+  background: rgba(229, 106, 74, 0.12) !important;
+  color: #E56A4A !important;
+  font-weight: 600 !important;
 }
 .history-label {
   margin: 25px 9px 8px;

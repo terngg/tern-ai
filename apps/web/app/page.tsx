@@ -31,6 +31,36 @@ import {
   RouterDashboard,
   RouterSelector,
 } from "./components/providers/RouterDashboard";
+import {
+  AlertCircle,
+  AlertTriangle,
+  ArrowUp,
+  ArrowUpRight,
+  BarChart2,
+  Check,
+  ChevronDown,
+  Code2,
+  FileCode,
+  FileSearch,
+  GitFork,
+  Info,
+  Layers,
+  Menu,
+  MessageSquare,
+  Moon,
+  MoreHorizontal,
+  Network,
+  Paperclip,
+  PieChart,
+  Plus,
+  Search,
+  Server,
+  Settings,
+  Sun,
+  Upload,
+  Wrench,
+  X,
+} from "lucide-react";
 type Screen =
   | "chat"
   | "settings"
@@ -634,28 +664,36 @@ export default function Home() {
       <aside
         className={`sidebar ${mobileNav ? "sidebar-open" : ""} ${!settings.sidebarOpen ? "sidebar-collapsed" : ""}`}
       >
+        <div className="sidebar-traffic-lights">
+          <span className="traffic-dot traffic-red" />
+          <span className="traffic-dot traffic-amber" />
+          <span className="traffic-dot traffic-green" />
+        </div>
         <div className="brand">
-          <span className="tern-mark">t</span>
-          <div>
+          <div className="brand-logo-icon">
+            <Network size={18} />
+          </div>
+          <div className="brand-text">
             <strong>Tern AI</strong>
-            <small>GTPS Lua Assistant</small>
+            <small>v0.3.0 · Router Hub</small>
           </div>
           <button
             className="icon-btn mobile-close"
             onClick={() => setMobileNav(false)}
+            aria-label="Close menu"
           >
-            ×
+            <X size={16} />
           </button>
         </div>
         <button className="new-chat" onClick={createChat}>
-          <b>＋</b> New chat{" "}
+          <Plus size={14} /> New chat
         </button>
         <nav className="side-nav">
           <button
             className={screen === "chat" ? "nav-active" : ""}
             onClick={() => setScreen("chat")}
           >
-            <span>◌</span> Chats
+            <MessageSquare size={16} /> Chats
           </button>
           <button
             className={screen === "providers" ? "nav-active" : ""}
@@ -664,7 +702,7 @@ export default function Home() {
               setMobileNav(false);
             }}
           >
-            <span>⚡</span> Providers
+            <Server size={16} /> Providers
           </button>
           <button
             className={screen === "pools" ? "nav-active" : ""}
@@ -673,7 +711,7 @@ export default function Home() {
               setMobileNav(false);
             }}
           >
-            <span>⑆</span> Proxy Pools
+            <Network size={16} /> Proxy Pools
           </button>
           <button
             className={screen === "routing" ? "nav-active" : ""}
@@ -682,7 +720,7 @@ export default function Home() {
               setMobileNav(false);
             }}
           >
-            <span>⇄</span> Routing
+            <GitFork size={16} /> Routing
           </button>
           <button
             className={screen === "usage" ? "nav-active" : ""}
@@ -691,32 +729,40 @@ export default function Home() {
               setMobileNav(false);
             }}
           >
-            <span>◷</span> Usage
+            <BarChart2 size={16} /> Usage
           </button>
-          {(
-            [
-              ["models", "Models"],
-              ["quota", "Quota"],
-              ["requests", "Requests"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              className={screen === id ? "nav-active" : ""}
-              onClick={() => {
-                setScreen(id);
-                setMobileNav(false);
-              }}
-            >
-              <span>◇</span>
-              {label}
-            </button>
-          ))}
+          <button
+            className={screen === "models" ? "nav-active" : ""}
+            onClick={() => {
+              setScreen("models");
+              setMobileNav(false);
+            }}
+          >
+            <Layers size={16} /> Models
+          </button>
+          <button
+            className={screen === "quota" ? "nav-active" : ""}
+            onClick={() => {
+              setScreen("quota");
+              setMobileNav(false);
+            }}
+          >
+            <PieChart size={16} /> Quota
+          </button>
+          <button
+            className={screen === "requests" ? "nav-active" : ""}
+            onClick={() => {
+              setScreen("requests");
+              setMobileNav(false);
+            }}
+          >
+            <FileSearch size={16} /> Requests
+          </button>
           <button
             className={screen === "apis" ? "nav-active" : ""}
             onClick={() => setScreen("apis")}
           >
-            <span>⌘</span> GTPS API
+            <Code2 size={16} /> GTPS API
           </button>
         </nav>
         <div className="history-label">YOUR CHATS</div>
@@ -741,7 +787,7 @@ export default function Home() {
                       title="Rename"
                       onClick={() => void renameChat(chat)}
                     >
-                      ···
+                      <MoreHorizontal size={14} />
                     </button>
                     <div className="chat-menu">
                       <button onClick={() => exportChat(chat)}>Export</button>
@@ -763,14 +809,14 @@ export default function Home() {
             className={screen === "settings" ? "nav-active" : ""}
             onClick={() => setScreen("settings")}
           >
-            <span>⚙</span> Settings
+            <Settings size={16} /> Settings
           </button>
           <div className="privacy-mini">Chat history stored on this device</div>
           <button
             className="import-chat"
             onClick={() => document.getElementById("import-chat")?.click()}
           >
-            ↥ Import conversation
+            <Upload size={14} /> Import conversation
           </button>
           <input
             id="import-chat"
@@ -798,13 +844,14 @@ export default function Home() {
                 setSettings((s) => ({ ...s, sidebarOpen: !s.sidebarOpen }))
               }
             >
-              ☰
+              <Menu size={16} />
             </button>
             <button
               className="icon-btn mobile-menu"
+              aria-label="Open menu"
               onClick={() => setMobileNav(true)}
             >
-              ☰
+              <Menu size={16} />
             </button>
             <span className="top-title">
               {screen === "chat"
@@ -821,7 +868,13 @@ export default function Home() {
                         ? "Routing"
                         : screen === "usage"
                           ? "Usage"
-                          : "GTPS API"}
+                          : screen === "models"
+                            ? "Models"
+                            : screen === "quota"
+                              ? "Quota"
+                              : screen === "requests"
+                                ? "Requests"
+                                : "GTPS API"}
             </span>
             <span className="top-context">
               {screen === "chat" && active?.messages.length
@@ -848,7 +901,7 @@ export default function Home() {
                 }))
               }
             >
-              {settings.theme === "light" ? "☼" : "◐"}
+              {settings.theme === "light" ? <Sun size={15} /> : <Moon size={15} />}
             </button>
           </div>
         </header>
@@ -902,7 +955,7 @@ export default function Home() {
                 <span className="entry-count">{apiItems.length} entries</span>
               </div>
               <div className="api-search">
-                <span>⌕</span>
+                <Search size={14} />
                 <input
                   placeholder="Search 485 APIs…"
                   value={apiSearch}
@@ -966,7 +1019,7 @@ export default function Home() {
                             setTimeout(() => composerRef.current?.focus(), 50);
                           }}
                         >
-                          Ask Tern about this API <span>↗</span>
+                          Ask Tern about this API <ArrowUpRight size={13} />
                         </button>
                       </>
                     ) : (
@@ -1037,34 +1090,34 @@ export default function Home() {
                         className="secondary-btn"
                         onClick={() => setScreen("settings")}
                       >
-                        Open settings <span>↗</span>
+                        Open settings <ArrowUpRight size={13} />
                       </button>
                     </div>
                   }
                   <div className="quick-actions">
                     <button onClick={() => action("generate")}>
-                      <span>✳</span>
+                      <Code2 size={18} className="text-primary" />
                       <b>Generate script</b>
                       <small>Create a GTPS feature from a prompt</small>
-                      <i>↗</i>
+                      <ArrowUpRight size={14} />
                     </button>
                     <button onClick={() => action("fix")}>
-                      <span>⌁</span>
+                      <Wrench size={18} className="text-amber-400" />
                       <b>Fix Lua</b>
                       <small>Find and repair script issues</small>
-                      <i>↗</i>
+                      <ArrowUpRight size={14} />
                     </button>
                     <button onClick={() => action("review")}>
-                      <span>⌕</span>
+                      <Search size={18} className="text-blue-400" />
                       <b>Review code</b>
                       <small>Check APIs, runtime, and safety</small>
-                      <i>↗</i>
+                      <ArrowUpRight size={14} />
                     </button>
                     <button onClick={() => action("explain")}>
-                      <span>▤</span>
+                      <FileCode size={18} className="text-green-400" />
                       <b>Explain code</b>
                       <small>Understand an existing Lua script</small>
-                      <i>↗</i>
+                      <ArrowUpRight size={14} />
                     </button>
                   </div>
                 </div>
@@ -1091,7 +1144,7 @@ export default function Home() {
                         </div>
                         {message.attachments?.map((file) => (
                           <div className="attachment-chip" key={file.name}>
-                            ▤ {file.name}
+                            <FileCode size={13} className="inline mr-1" /> {file.name}
                             <small>{(file.size / 1024).toFixed(1)} KB</small>
                           </div>
                         ))}
@@ -1156,7 +1209,7 @@ export default function Home() {
                         )}
                         {message.error && (
                           <div className="message-error">
-                            <span>⚠</span> {message.error}
+                            <AlertCircle size={14} className="inline mr-1 text-red-400" /> {message.error}
                             <button
                               disabled={busy}
                               onClick={() => {
@@ -1239,22 +1292,22 @@ export default function Home() {
                           <div className="validation-row">
                             {message.validation.syntaxValid ? (
                               <span className="validation-ok">
-                                ✓ Lua syntax valid
+                                <Check size={13} className="inline mr-1" /> Lua syntax valid
                               </span>
                             ) : (
                               <span className="validation-fail">
-                                ✕ Lua syntax errors
+                                <X size={13} className="inline mr-1" /> Lua syntax errors
                               </span>
                             )}
                             <span className="validation-ok">
-                              ✓ {message.validation.recognized.length} GTPS APIs
+                              <Check size={13} className="inline mr-1" /> {message.validation.recognized.length} GTPS APIs
                               checked
                             </span>
                             {message.validation.findings.filter(
                               (f) => f.severity === "warning",
                             ).length > 0 && (
                               <span className="validation-warn">
-                                ⚠{" "}
+                                <AlertTriangle size={13} className="inline mr-1" />
                                 {
                                   message.validation.findings.filter(
                                     (f) => f.severity === "warning",
@@ -1288,14 +1341,14 @@ export default function Home() {
                       <option value="review">Review</option>
                       <option value="explain">Explain</option>
                     </select>
-                    <span>⌄</span>
+                    <ChevronDown size={14} />
                   </div>
                   <button
                     className="attach-button"
                     title="Attach Lua or text file"
                     onClick={() => inputRef.current?.click()}
                   >
-                    ＋ <span>Attach</span>
+                    <Paperclip size={14} /> <span>Attach</span>
                   </button>
                   <input
                     ref={inputRef}
@@ -1317,13 +1370,14 @@ export default function Home() {
                   <div className="pending-files">
                     {files.map((file, i) => (
                       <span className="pending-file" key={file.name + i}>
-                        ▤ {file.name}
+                        <FileCode size={13} className="inline mr-1" /> {file.name}
                         <button
                           onClick={() =>
                             setFiles((v) => v.filter((_, n) => n !== i))
                           }
+                          aria-label={`Remove ${file.name}`}
                         >
-                          ×
+                          <X size={12} />
                         </button>
                       </span>
                     ))}
@@ -1358,7 +1412,7 @@ export default function Home() {
                         className="send-button"
                         disabled={!draft.trim() && !files.length}
                       >
-                        Send <span>↑</span>
+                        Send <ArrowUp size={14} />
                       </button>
                     )}
                   </div>
@@ -1374,9 +1428,11 @@ export default function Home() {
       </section>
       {notice && (
         <div className="toast" role="status">
-          <span>ℹ</span>
+          <Info size={14} />
           <span>{notice}</span>
-          <button onClick={() => setNotice("")}>×</button>
+          <button onClick={() => setNotice("")} aria-label="Dismiss notice">
+            <X size={14} />
+          </button>
         </div>
       )}
     </main>
