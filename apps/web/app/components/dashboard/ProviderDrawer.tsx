@@ -14,6 +14,8 @@ import type { Connection, ProviderDefinition, CompanionStatus } from "../../../l
 import { Drawer } from "../ui/Drawer";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
+import { ProviderIcon } from "../ui/ProviderIcon";
+import { getProviderColor } from "./providerColors";
 import { connectionStatus } from "../providers/RouterDashboard";
 
 interface ProviderDrawerProps {
@@ -44,7 +46,27 @@ export function ProviderDrawer({
     <Drawer
       isOpen={Boolean(provider)}
       onClose={onClose}
-      title={provider.name}
+      title={
+        <span className="flex items-center gap-2.5">
+          <span
+            className="size-7 rounded-md shrink-0 inline-flex items-center justify-center overflow-hidden"
+            style={{
+              backgroundColor: `${getProviderColor(provider.id)}18`,
+              border: `1px solid ${getProviderColor(provider.id)}30`,
+            }}
+          >
+            <ProviderIcon
+              providerId={provider.id}
+              alt={provider.name}
+              size={20}
+              className="max-w-[20px] max-h-[20px]"
+              fallbackText={provider.name.slice(0, 2)}
+              fallbackColor={getProviderColor(provider.id)}
+            />
+          </span>
+          <span>{provider.name}</span>
+        </span>
+      }
       subtitle="Provider Connections"
       width="lg"
     >

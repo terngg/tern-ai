@@ -31,6 +31,10 @@ test("provider catalog has truthful unconfigured, Companion and unsupported stat
   await expect(
     page.getByRole("dialog").locator("input[type=password]"),
   ).toHaveCount(0);
+  await page.screenshot({
+    path: "test-results/kiro-drawer.png",
+    fullPage: true,
+  });
   await page.getByRole("button", { name: "Close provider" }).click();
   await page.screenshot({
     path: "test-results/providers-dashboard.png",

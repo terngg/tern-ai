@@ -8,6 +8,11 @@ export const metadata: Metadata = {
     "A GTPS Lua coding assistant with private provider connections, multi-account routing, and local Lua validation.",
   applicationName: "Tern AI",
   referrer: "strict-origin-when-cross-origin",
+  icons: {
+    icon: "/logo.png",
+    shortcut: "/logo.png",
+    apple: "/logo.png",
+  },
 };
 export default function RootLayout({
   children,

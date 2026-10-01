@@ -2,12 +2,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { PGlite } from "@electric-sql/pglite";
 import { readFile } from "node:fs/promises";
-import { getLocalAdapters, getLocalAdapter } from "../src/companion/registry.js";
+import { getLocalAdapters } from "../src/companion/registry.js";
 import { detectAllLocalProviders } from "../src/companion/detector.js";
 import { CompanionRelay } from "../apps/web/lib/router/companion-relay.js";
 import { RouterStore, type Database } from "../apps/web/lib/router/store.js";
 import { RoutedClient } from "../apps/web/lib/router/engine.js";
-import { PublicError, RouteError } from "../apps/web/lib/router/errors.js";
 
 process.env.TERN_CREDENTIAL_KEY = "ab".repeat(32);
 
@@ -261,6 +260,9 @@ test("shared router routes seamlessly to companion connection and records trace"
     let tokens = "";
     const [response] = await Promise.all([
       client.complete({
+        model: "auto",
+        temperature: 0.7,
+        free: false,
         messages: [{ role: "user", content: "generate code" }],
         onToken: (t) => {
           tokens += t;
@@ -274,7 +276,7 @@ test("shared router routes seamlessly to companion connection and records trace"
     assert.equal(tokens, "print('Lua code from local Codex')");
 
     // Check trace was recorded
-    const traces = await store.traces(10);
+    const traces = await store.traces();
     assert.equal(traces.length, 1);
     assert.equal(traces[0]!.provider, "codex");
     assert.equal(traces[0]!.status, "ok");

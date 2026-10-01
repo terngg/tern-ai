@@ -2,6 +2,7 @@ import React from "react";
 import type { Connection } from "../../../lib/router/types";
 import { Badge } from "../ui/Badge";
 import { EmptyState } from "../ui/EmptyState";
+import { ProviderIcon } from "../ui/ProviderIcon";
 
 interface ModelsTableProps {
   connections: Connection[];
@@ -84,8 +85,14 @@ export function ModelsTable({ connections }: ModelsTableProps) {
                       <div className="text-text-main font-medium">
                         {m.connectionLabel}
                       </div>
-                      <div className="text-[11px] text-text-subtle font-mono">
-                        {m.provider}
+                      <div className="text-[11px] text-text-subtle font-mono flex items-center gap-1.5 mt-0.5">
+                        <ProviderIcon
+                          providerId={m.provider}
+                          size={14}
+                          className="max-w-[14px] max-h-[14px]"
+                          fallbackText={m.provider.slice(0, 2)}
+                        />
+                        <span>{m.provider}</span>
                       </div>
                     </td>
 

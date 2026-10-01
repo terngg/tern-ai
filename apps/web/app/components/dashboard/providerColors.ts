@@ -24,6 +24,8 @@ export const providerBrandColors: Record<string, string> = {
   antigravity: "#f59e0b",
   "kilo-code": "#ec4899",
   ollama: "#f3f4f6",
+  cohere: "#39594d",
+  nvidia: "#76b900",
 };
 
 export function getProviderColor(id: string): string {

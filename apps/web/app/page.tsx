@@ -671,7 +671,7 @@ export default function Home() {
         </div>
         <div className="brand">
           <div className="brand-logo-icon">
-            <Network size={18} />
+            <img src="/logo.png" alt="Tern AI" />
           </div>
           <div className="brand-text">
             <strong>Tern AI</strong>
@@ -1068,7 +1068,7 @@ export default function Home() {
               {!active?.messages.length ? (
                 <div className="welcome">
                   <div className="welcome-mark">
-                    <span>t</span>
+                    <img src="/logo.png" alt="Tern AI" />
                     <i />
                   </div>
                   <span className="eyebrow">GTPS LUA CODING ASSISTANT</span>
@@ -1129,7 +1129,11 @@ export default function Home() {
                       key={message.id}
                     >
                       <div className={`avatar ${message.role}`}>
-                        {message.role === "user" ? "Y" : "t"}
+                        {message.role === "user" ? (
+                          "Y"
+                        ) : (
+                          <img src="/logo.png" alt="Tern AI" />
+                        )}
                       </div>
                       <div className="message-body">
                         <div className="message-meta">

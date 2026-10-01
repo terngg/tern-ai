@@ -2,6 +2,7 @@ import React from "react";
 import type { Connection } from "../../../lib/router/types";
 import { Badge } from "../ui/Badge";
 import { EmptyState } from "../ui/EmptyState";
+import { ProviderIcon } from "../ui/ProviderIcon";
 import { getProviderColor } from "./providerColors";
 
 interface QuotaViewProps {
@@ -41,15 +42,22 @@ export function QuotaView({ connections }: QuotaViewProps) {
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div
-                      className="size-7 rounded-md shrink-0 flex items-center justify-center font-bold text-[11px] uppercase"
+                      className="size-7 rounded-md shrink-0 flex items-center justify-center overflow-hidden"
                       style={{
-                        backgroundColor: `${brandColor}20`,
-                        color:
-                          brandColor === "#ededed" ? "#ffffff" : brandColor,
-                        border: `1px solid ${brandColor}40`,
+                        backgroundColor: `${brandColor}18`,
+                        border: `1px solid ${brandColor}30`,
                       }}
                     >
-                      {c.provider.slice(0, 2)}
+                      <ProviderIcon
+                        providerId={c.provider}
+                        alt={c.provider}
+                        size={20}
+                        className="max-w-[20px] max-h-[20px]"
+                        fallbackText={c.provider.slice(0, 2)}
+                        fallbackColor={
+                          brandColor === "#ededed" ? "#ffffff" : brandColor
+                        }
+                      />
                     </div>
                     <div className="min-w-0">
                       <h4 className="text-text-main font-semibold text-xs truncate">

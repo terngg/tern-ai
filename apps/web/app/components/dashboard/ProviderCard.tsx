@@ -2,6 +2,7 @@ import React from "react";
 import type { Connection, ProviderDefinition } from "../../../lib/router/types";
 import { getProviderColor } from "./providerColors";
 import { Badge } from "../ui/Badge";
+import { ProviderIcon } from "../ui/ProviderIcon";
 import { connectionStatus } from "../providers/RouterDashboard";
 
 interface ProviderCardProps {
@@ -59,14 +60,20 @@ export function ProviderCard({
       <div className="flex items-center justify-between gap-2.5 w-full">
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           <div
-            className="size-8 rounded-lg shrink-0 flex items-center justify-center font-bold text-xs uppercase"
+            className="size-8 rounded-lg shrink-0 flex items-center justify-center overflow-hidden"
             style={{
-              backgroundColor: `${brandColor}20`,
-              color: brandColor === "#ededed" ? "#ffffff" : brandColor,
-              border: `1px solid ${brandColor}40`,
+              backgroundColor: `${brandColor}15`,
+              border: `1px solid ${brandColor}30`,
             }}
           >
-            {provider.name.slice(0, 2)}
+            <ProviderIcon
+              providerId={provider.id}
+              alt={provider.name}
+              size={24}
+              className="max-w-[24px] max-h-[24px]"
+              fallbackText={provider.name.slice(0, 2)}
+              fallbackColor={brandColor === "#ededed" ? "#ffffff" : brandColor}
+            />
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="text-text-main font-semibold text-[13px] truncate leading-snug">

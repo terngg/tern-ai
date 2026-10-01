@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import type { Connection, Trace } from "../../../lib/router/types";
 import { Badge } from "../ui/Badge";
 import { EmptyState } from "../ui/EmptyState";
+import { ProviderIcon } from "../ui/ProviderIcon";
 
 interface RequestsTableProps {
   traces: Trace[];
@@ -107,8 +108,16 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
                       </td>
 
                       <td className="py-3 px-4">
-                        <div className="font-semibold text-text-main">
-                          {t.provider} / {t.selectedModel}
+                        <div className="font-semibold text-text-main flex items-center gap-1.5">
+                          <ProviderIcon
+                            providerId={t.provider}
+                            size={14}
+                            className="max-w-[14px] max-h-[14px]"
+                            fallbackText={t.provider.slice(0, 2)}
+                          />
+                          <span>
+                            {t.provider} / {t.selectedModel}
+                          </span>
                         </div>
                         <div className="text-text-muted text-[11px]">
                           Requested: {t.requestedModel} · {t.retries} retries
