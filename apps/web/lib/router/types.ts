@@ -13,11 +13,18 @@ export type ErrorCategory =
   | "permission_denied"
   | "network"
   | "cancelled";
+export type ExecutionMode =
+  | "cloud_api"
+  | "cloud_oauth"
+  | "companion"
+  | "unsupported";
+
 export interface ProviderDefinition {
   id: string;
   name: string;
   category: "oauth" | "free" | "api_key" | "compatible" | "local";
   auth: "api_key" | "oauth" | "device_code" | "local_companion" | "custom";
+  executionMode: ExecutionMode;
   capabilities: {
     chat?: boolean;
     code?: boolean;
@@ -30,6 +37,27 @@ export interface ProviderDefinition {
   protocol?: Protocol;
   baseUrl?: string;
   docs?: string;
+}
+
+export interface DetectedLocalProvider {
+  id: string;
+  name: string;
+  installed: boolean;
+  version?: string;
+  authenticated: boolean;
+  authDetails?: string;
+  models: Model[];
+  health: { ok: boolean; latencyMs?: number; error?: string };
+}
+
+export interface CompanionStatus {
+  paired: boolean;
+  connected: boolean;
+  companionId?: string;
+  platform?: string;
+  label?: string;
+  lastHeartbeat?: number;
+  detectedProviders: DetectedLocalProvider[];
 }
 export interface Model {
   id: string;

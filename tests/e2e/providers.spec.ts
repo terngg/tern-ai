@@ -5,7 +5,7 @@ test("provider catalog has truthful unconfigured, Companion and unsupported stat
   await page.goto("/?screen=providers");
   await expect(page.locator("main")).toHaveAttribute("data-ready", "true");
   await expect(page.locator(".providers-header h1")).toHaveText("Providers");
-  await expect(page.locator(".provider-card")).toHaveCount(25);
+  await expect(page.locator(".provider-card")).toHaveCount(27);
   await expect(
     page.locator(".provider-card").filter({ hasText: "Kiro" }),
   ).toContainText("Requires Tern Companion");

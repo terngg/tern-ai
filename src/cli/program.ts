@@ -66,5 +66,23 @@ export function program():Command {
     await new ConfigStore().set(key,parsed);output('✓ Configuration updated.');
   });
   cli.command('doctor').description('Check local setup and available providers (no generation)').option('--offline','Skip network check').action(async(options:{offline?:boolean})=>doctor(!!options.offline));
+
+  const companion = cli.command('companion').description('Manage Tern Companion for local/desktop AI provider routing').action(async () => {
+    const { runCompanion } = await import('../commands/companion.js');
+    await runCompanion();
+  });
+  companion.command('pair').argument('<code>').option('--server <url>', 'Server URL').description('Pair this local machine with your Tern AI account').action(async (code: string, opts: { server?: string }) => {
+    const { pairCompanion } = await import('../commands/companion.js');
+    await pairCompanion(code, opts);
+  });
+  companion.command('status').description('Show companion pairing status and detected local providers').action(async () => {
+    const { companionStatus } = await import('../commands/companion.js');
+    await companionStatus();
+  });
+  companion.command('providers').description('List detected local AI providers, models, and health').action(async () => {
+    const { companionProviders } = await import('../commands/companion.js');
+    await companionProviders();
+  });
+
   return cli;
 }

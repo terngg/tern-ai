@@ -1,18 +1,22 @@
 import pg from "pg";
-import { readFile } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
+import { join } from "node:path";
+
 if (!process.env.DATABASE_URL) throw new Error("DATABASE_URL is required");
 const client = new pg.Client({ connectionString: process.env.DATABASE_URL });
 try {
   await client.connect();
   await client.query("BEGIN");
-  await client.query(
-    await readFile(
-      new URL("../migrations/001-router.sql", import.meta.url),
-      "utf8",
-    ),
-  );
+  const migrationsDir = new URL("../migrations", import.meta.url).pathname;
+  const files = (await readdir(migrationsDir))
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
+  for (const file of files) {
+    const sql = await readFile(join(migrationsDir, file), "utf8");
+    await client.query(sql);
+  }
   await client.query("COMMIT");
-  console.log("Router migration applied.");
+  console.log("Router migrations applied successfully.");
 } catch {
   console.error("Router migration failed. Credentials suppressed.");
   process.exitCode = 1;

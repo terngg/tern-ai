@@ -1,12 +1,16 @@
-import React, { useRef } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   ExternalLink,
   KeyRound,
   Plus,
   Server,
   Trash2,
+  Copy,
+  Check,
+  Laptop,
+  RefreshCw,
 } from "lucide-react";
-import type { Connection, ProviderDefinition } from "../../../lib/router/types";
+import type { Connection, ProviderDefinition, CompanionStatus } from "../../../lib/router/types";
 import { Drawer } from "../ui/Drawer";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -44,20 +48,24 @@ export function ProviderDrawer({
       subtitle="Provider Connections"
       width="lg"
     >
-      {!isImplemented ? (
+      {provider.adapterStatus === "requires_companion" || provider.auth === "local_companion" ? (
+        <CompanionSection
+          provider={provider}
+          connections={providerConnections}
+          signedIn={signedIn}
+          busy={busy}
+          onAct={onAct}
+        />
+      ) : !isImplemented ? (
         <div className="p-5 rounded-xl border border-border-subtle bg-surface-2/40 text-center flex flex-col items-center">
           <div className="size-10 rounded-full bg-surface-3 flex items-center justify-center text-text-muted mb-3">
             <Server size={20} />
           </div>
           <h3 className="text-sm font-semibold text-text-main mb-1">
-            {provider.adapterStatus === "requires_companion"
-              ? "Requires Tern Companion"
-              : "Unsupported"}
+            Unsupported
           </h3>
           <p className="text-xs text-text-muted max-w-md">
-            {provider.adapterStatus === "requires_companion"
-              ? "This integration requires a local client or desktop session. A Tern Companion connection is not available yet."
-              : "Custom REST requires an explicit request and response mapping. No adapter is available yet."}
+            Custom REST requires an explicit request and response mapping. No adapter is available yet.
           </p>
         </div>
       ) : (
@@ -456,3 +464,267 @@ function AddConnectionForm({
     </form>
   );
 }
+
+function CompanionSection({
+  provider,
+  connections,
+  signedIn,
+  busy,
+  onAct,
+}: {
+  provider: ProviderDefinition;
+  connections: Connection[];
+  signedIn: boolean;
+  busy: boolean;
+  onAct: (body: unknown) => Promise<boolean>;
+}) {
+  const [status, setStatus] = useState<CompanionStatus | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [pairCode, setPairCode] = useState<{ code: string; expiresAt: number } | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const fetchStatus = useCallback(async () => {
+    if (!signedIn) return;
+    try {
+      setLoading(true);
+      const res = await fetch("/api/router/companion", { cache: "no-store" });
+      if (res.ok) {
+        const data = (await res.json()) as CompanionStatus;
+        setStatus(data);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setLoading(false);
+    }
+  }, [signedIn]);
+
+  useEffect(() => {
+    void fetchStatus();
+    const interval = setInterval(() => {
+      void fetchStatus();
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [fetchStatus]);
+
+  const handleGeneratePairCode = async () => {
+    try {
+      setGenerating(true);
+      const res = await fetch("/api/router/companion", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "pair-code" }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { code: string; expiresAt: number };
+        setPairCode(data);
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleCopy = (text: string) => {
+    void navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const detected = status?.detectedProviders?.find((dp) => dp.id === provider.id);
+
+  return (
+    <div className="space-y-5">
+      {/* Header card with Requires Tern Companion heading to preserve test invariants */}
+      <div className="p-4 rounded-xl border border-border-subtle bg-surface-2/40 text-center flex flex-col items-center">
+        <div className="size-10 rounded-full bg-surface-3 flex items-center justify-center text-text-muted mb-3">
+          <Laptop size={20} />
+        </div>
+        <h3 className="text-sm font-semibold text-text-main mb-1">
+          Requires Tern Companion
+        </h3>
+        <p className="text-xs text-text-muted max-w-md">
+          {provider.name} runs directly on your local workstation through Tern Companion.
+          Local credentials and session keys remain isolated on your machine and are never transmitted to the cloud.
+        </p>
+      </div>
+
+      {!signedIn ? (
+        <div className="p-4 rounded-xl border border-border-subtle bg-surface-2/30 text-xs text-text-muted text-center">
+          Sign in to Tern AI to pair your workstation and manage local providers.
+        </div>
+      ) : !status?.paired ? (
+        <div className="p-4 rounded-xl border border-border-subtle bg-surface space-y-4">
+          <div className="flex items-center justify-between border-b border-border-subtle pb-3">
+            <div>
+              <h4 className="text-xs font-semibold text-text-main">
+                Install & Pair Tern Companion
+              </h4>
+              <p className="text-[11px] text-text-muted mt-0.5">
+                Connect your local CLI tools, desktop daemons, and models.
+              </p>
+            </div>
+            <Badge variant="warning" size="sm" dot>
+              Not paired
+            </Badge>
+          </div>
+
+          <div className="space-y-3 text-xs">
+            <div>
+              <span className="font-semibold text-text-muted block mb-1">
+                1. Install Companion CLI:
+              </span>
+              <div className="p-2.5 rounded-lg bg-bg border border-border-subtle font-mono text-[11px] text-text-main select-all flex items-center justify-between">
+                <code>npm install -g @tern-ai/companion</code>
+                <button
+                  type="button"
+                  onClick={() => handleCopy("npm install -g @tern-ai/companion")}
+                  className="text-text-muted hover:text-text-main cursor-pointer"
+                >
+                  <Copy size={12} />
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <span className="font-semibold text-text-muted block mb-1">
+                2. Pair with one-time code:
+              </span>
+              {pairCode ? (
+                <div className="space-y-1.5">
+                  <div className="p-2.5 rounded-lg bg-bg border border-primary/40 font-mono text-[11px] text-primary select-all flex items-center justify-between">
+                    <code>tern companion pair {pairCode.code}</code>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(`tern companion pair ${pairCode.code}`)}
+                      className="text-primary hover:underline text-xs flex items-center gap-1 cursor-pointer"
+                    >
+                      {copied ? <Check size={12} /> : <Copy size={12} />}
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-text-subtle">
+                    Code expires in 10 minutes. Run in your terminal, then start the daemon with <code className="text-text-main">tern companion</code>.
+                  </p>
+                </div>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  disabled={generating}
+                  onClick={handleGeneratePairCode}
+                >
+                  {generating ? "Generating..." : "Generate One-Time Pairing Code"}
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Companion Connected Banner */}
+          <div className="p-3.5 rounded-xl border border-green-500/20 bg-green-500/5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <span className="size-2 rounded-full bg-green-500 animate-pulse" />
+              <div>
+                <div className="text-xs font-semibold text-text-main">
+                  Tern Companion {status.connected ? "Online" : "Offline"}
+                </div>
+                <div className="text-[11px] text-text-muted font-mono">
+                  {status.label} · {status.platform}
+                </div>
+              </div>
+            </div>
+            <Button
+              size="xs"
+              variant="secondary"
+              icon={<RefreshCw size={11} />}
+              disabled={loading}
+              onClick={() => void fetchStatus()}
+            >
+              Refresh
+            </Button>
+          </div>
+
+          {/* Local Provider Status */}
+          <div className="p-4 rounded-xl border border-border-subtle bg-surface space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-text-main">
+                Local Tool: {provider.name}
+              </span>
+              <Badge
+                variant={
+                  !detected?.installed
+                    ? "default"
+                    : detected.authenticated
+                      ? "success"
+                      : "warning"
+                }
+                size="sm"
+                dot
+              >
+                {!detected?.installed
+                  ? "Not installed"
+                  : detected.authenticated
+                    ? "Ready"
+                    : "Auth required"}
+              </Badge>
+            </div>
+
+            {detected?.installed ? (
+              <div className="space-y-2 text-xs">
+                {detected.version && (
+                  <div className="text-text-muted">
+                    Detected version: <span className="font-mono text-text-main">{detected.version}</span>
+                  </div>
+                )}
+                <div className="text-text-muted">
+                  Authentication: <span className="text-text-main">{detected.authDetails || (detected.authenticated ? "Authenticated" : "Unauthenticated")}</span>
+                </div>
+                {detected.models.length > 0 && (
+                  <div>
+                    <span className="text-text-muted block mb-1">Discovered local models ({detected.models.length}):</span>
+                    <div className="flex flex-wrap gap-1">
+                      {detected.models.map((m) => (
+                        <span
+                          key={m.id}
+                          className="px-2 py-0.5 rounded bg-surface-2 text-[11px] font-mono text-text-main border border-border-subtle"
+                        >
+                          {m.name || m.id}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <p className="text-xs text-text-muted">
+                {provider.name} is not currently detected on this workstation. Install it locally to enable routing.
+              </p>
+            )}
+          </div>
+
+          {/* Configured Connections for this companion provider */}
+          {connections.length > 0 && (
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold uppercase tracking-wider text-text-muted">
+                Active Router Connections ({connections.length})
+              </h4>
+              {connections.map((c) => (
+                <ConnectionItem
+                  key={c.id}
+                  connection={c}
+                  busy={busy}
+                  onAct={onAct}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+

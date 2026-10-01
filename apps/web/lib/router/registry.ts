@@ -1,4 +1,5 @@
 import type { ProviderDefinition } from "./types.js";
+
 const api = (
   id: string,
   name: string,
@@ -13,9 +14,11 @@ const api = (
   protocol,
   category: "api_key",
   auth: "api_key",
+  executionMode: "cloud_api",
   capabilities: { chat: true, code: true },
   adapterStatus: "implemented",
 });
+
 const companion = (
   id: string,
   name: string,
@@ -25,9 +28,11 @@ const companion = (
   name,
   category,
   auth: "local_companion",
-  capabilities: {},
+  executionMode: "companion",
+  capabilities: { chat: true, code: true },
   adapterStatus: "requires_companion",
 });
+
 export const providers: ProviderDefinition[] = [
   companion("claude-code", "Claude Code"),
   companion("codex", "Codex CLI"),
@@ -106,11 +111,24 @@ export const providers: ProviderDefinition[] = [
     "https://api.x.ai/v1",
     "https://docs.x.ai/developers/rest-api-reference/inference/chat-completions",
   ),
+  api(
+    "cohere",
+    "Cohere",
+    "https://api.cohere.com/v2",
+    "https://docs.cohere.com/reference/chat",
+  ),
+  api(
+    "nvidia",
+    "NVIDIA NIM",
+    "https://integrate.api.nvidia.com/v1",
+    "https://build.nvidia.com/",
+  ),
   {
     id: "openai-compatible",
     name: "OpenAI Compatible",
     category: "compatible",
     auth: "custom",
+    executionMode: "cloud_api",
     capabilities: { chat: true, code: true },
     adapterStatus: "implemented",
     protocol: "openai",
@@ -120,6 +138,7 @@ export const providers: ProviderDefinition[] = [
     name: "Anthropic Compatible",
     category: "compatible",
     auth: "custom",
+    executionMode: "cloud_api",
     capabilities: { chat: true, code: true },
     adapterStatus: "implemented",
     protocol: "anthropic",
@@ -129,12 +148,15 @@ export const providers: ProviderDefinition[] = [
     name: "Custom REST",
     category: "compatible",
     auth: "custom",
+    executionMode: "unsupported",
     capabilities: {},
     adapterStatus: "unsupported",
   },
   companion("ollama", "Ollama", "local"),
 ];
+
 export const providerById = (id: string) => providers.find((p) => p.id === id);
+
 export const virtualModels = [
   "auto",
   "auto/balanced",

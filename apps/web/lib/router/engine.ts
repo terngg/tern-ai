@@ -67,6 +67,51 @@ export async function checkConnection(
     );
   const start = Date.now(),
     secret = await store.secret(id);
+
+  if (c.baseUrl.startsWith("companion://")) {
+    const { CompanionRelay } = await import("./companion-relay.js");
+    const relay = new CompanionRelay(store.db);
+    const status = await relay.getCompanionStatus(store.owner);
+    if (!status.connected) {
+      const e = new RouteError("network", 503);
+      await store.patch(id, {
+        health: "network",
+        checkedAt: Date.now(),
+        latencyMs: Date.now() - start,
+      });
+      throw e;
+    }
+    const detected = status.detectedProviders.find((dp) => dp.id === c.provider);
+    if (!detected || !detected.installed) {
+      const e = new RouteError("network", 503);
+      await store.patch(id, {
+        health: "network",
+        checkedAt: Date.now(),
+        latencyMs: Date.now() - start,
+      });
+      throw e;
+    }
+    if (!detected.authenticated) {
+      const e = new RouteError("auth_failure", 401);
+      await store.patch(id, {
+        health: "auth_failure",
+        checkedAt: Date.now(),
+        latencyMs: Date.now() - start,
+      });
+      throw e;
+    }
+    await store.patch(id, {
+      models: detected.models.length > 0 ? detected.models : c.models,
+      modelsAt: Date.now(),
+      health: "connected",
+      checkedAt: Date.now(),
+      latencyMs: detected.health.latencyMs ?? (Date.now() - start),
+      cooldownUntil: null,
+      quota: "unknown",
+    });
+    return store.connection(id);
+  }
+
   try {
     const models = await discover(
       c,
@@ -243,43 +288,72 @@ export class RoutedClient implements CompletionClient {
         }
       });
       try {
-        const result = await infer(
-          c,
-          secret,
-          {
-            model: c.model,
-            messages: options.messages.map((m) => ({
-              ...m,
+        let resultText = "";
+        let inputTokens: number | null = null;
+        let outputTokens: number | null = null;
+
+        if (c.baseUrl.startsWith("companion://")) {
+          const { CompanionRelay } = await import("./companion-relay.js");
+          const relay = new CompanionRelay(this.store.db);
+          const companionRes = await relay.dispatchAndStreamJob(
+            this.store.owner,
+            c.provider,
+            c.model,
+            options.messages.map((m) => ({
+              role: m.role as "system" | "user" | "assistant",
               content: redact(m.content, secrets),
             })),
-            stream: options.stream,
-            maxTokens: this.maxTokens,
-            signal,
-            onToken: (text) => {
+            options.temperature,
+            this.maxTokens,
+            (text) => {
               if (text && ttft === null) ttft = Date.now() - started;
               output.push(text);
             },
-          },
-          this.transport,
-        );
+            signal,
+          );
+          resultText = companionRes.text;
+        } else {
+          const result = await infer(
+            c,
+            secret,
+            {
+              model: c.model,
+              messages: options.messages.map((m) => ({
+                ...m,
+                content: redact(m.content, secrets),
+              })),
+              stream: options.stream,
+              maxTokens: this.maxTokens,
+              signal,
+              onToken: (text) => {
+                if (text && ttft === null) ttft = Date.now() - started;
+                output.push(text);
+              },
+            },
+            this.transport,
+          );
+          resultText = result.text;
+          inputTokens = result.inputTokens;
+          outputTokens = result.outputTokens;
+        }
         output.flush();
         this.lastModel = c.model;
         this.lastProvider = c.provider;
         trace.status = "ok";
-        trace.inputTokens = result.inputTokens;
-        trace.outputTokens = result.outputTokens;
+        trace.inputTokens = inputTokens;
+        trace.outputTokens = outputTokens;
         const m = c.models.find((m) => m.id === c.model);
         if (
           c.modelsAt &&
           Date.now() - c.modelsAt < 3600_000 &&
           m?.inputPrice !== undefined &&
           m.outputPrice !== undefined &&
-          result.inputTokens !== null &&
-          result.outputTokens !== null
+          inputTokens !== null &&
+          outputTokens !== null
         )
           trace.estimatedCost =
-            m.inputPrice * result.inputTokens +
-            m.outputPrice * result.outputTokens;
+            m.inputPrice * inputTokens +
+            m.outputPrice * outputTokens;
         await this.store.patch(c.id, {
           health: "healthy",
           checkedAt: Date.now(),
@@ -287,7 +361,7 @@ export class RoutedClient implements CompletionClient {
           cooldownUntil: null,
           quota: "unknown",
         });
-        return redact(result.text, secrets);
+        return redact(resultText, secrets);
       } catch (error) {
         const e = options.signal?.aborted
           ? new RouteError("cancelled", 499)
