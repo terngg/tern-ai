@@ -53,7 +53,14 @@ Tern AI remains the product. TernRouter reference commit: `a46bd7eaa0989929afeb3
 - Official model endpoints were contacted with intentionally invalid credentials: OpenAI, Anthropic, Groq, DeepSeek, Mistral, Together, Fireworks and Cerebras returned 401. Gemini/xAI returned documented invalid-key errors with HTTP 400. OpenRouter's public catalog returned 200, so its implementation separately checks authenticated /key. These are negative tests only.
 - Lint, root/web typecheck and CLI/Next production build pass. Initial Vercel preview identified missing workspace-local @types/pg; fixed before rollout.
 - Managed Neon free database provisioned in iad1; migration 001-router.sql applied. Seven tables, encryption roundtrip, metadata redaction and routing cursor verified against managed PostgreSQL.
-- Deployed preview/production verification results will be appended after HTTPS checks.
+- Deployed preview verification (`https://tern-jkx2hdrvs-terngg.vercel.app`):
+  - `scripts/check-web-deployment.mjs`: PASS public homepage and security headers (CSP, nosniff, frame-ancestors none), serverless GTPS reference (485 entries), all router entrypoints require authenticated user (no credential/user-ID bypass), cross-origin request protection (403 on untrusted origin), simulated testing endpoint retired (410 Gone).
+  - `scripts/verify-router-deployment.mjs`: PASS managed PostgreSQL connectivity and seven router tables, AES-256-GCM encrypted persistence, authenticated roundtrip with AAD, metadata-only response, cross-user list/update/delete/test isolation, real negative provider check persists auth_failure and measured latency, durable routing cursor, deployed account/provider persistence (no successful AI inference claimed).
+  - `scripts/check-router-browser.mjs`: PASS live browser registration, encrypted connection creation, real failed health check, reload persistence, topology and unknown quota.
+- Deployed production verification (`https://tern-ai-terngg.vercel.app`):
+  - `scripts/check-web-deployment.mjs`: PASS public homepage and security headers, serverless GTPS reference (485 entries), router authentication requirements, cross-origin request protection, simulated testing endpoint retired.
+  - `scripts/verify-router-deployment.mjs`: PASS managed PostgreSQL connectivity and seven router tables, AES-256-GCM encrypted persistence, cross-user isolation, real negative provider check persists auth_failure, durable routing cursor.
+  - `scripts/check-router-browser.mjs`: PASS live browser registration, encrypted connection creation, real failed health check, reload persistence, topology and unknown quota.
 
 ## Known limitations
 
