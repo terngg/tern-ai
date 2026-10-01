@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@tern-ai/core": "0.3.0",
+    "ipaddr.js": "^2.5.0",
     "lucide-react": "^1.49.0",
     "next": "16.3.x",
+    "pg": "^8.23.1",
     "react": "19.2.x",
     "react-dom": "19.2.x",
     "react-markdown": "^10.1.0",
@@ -21,6 +23,7 @@
   "devDependencies": {
     "@types/luaparse": "^0.2.12",
     "@types/node": "^24.0.0",
+    "@types/pg": "^8.23.1",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "typescript": "^5.9.0"

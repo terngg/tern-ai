@@ -6,7 +6,6 @@ import { GeminiProvider, OpenRouterProvider } from "@tern-ai/core";
 
 export const MAX_BODY = 300_000;
 export const MAX_UPLOAD = 16_384;
-const limits = new Map<string, { started: number; count: number }>();
 const secretPattern = {
   gemini: /^(?:AIza[\w-]{20,}|AQ\.[\w.-]{20,}|[\w.-]{20,})$/,
   openrouter: /^sk-or-[\w-]{12,}$/,
@@ -33,6 +32,7 @@ export function guardRequest(
   request: Request,
   kind: "generate" | "provider",
 ): Response | undefined {
+  void kind;
   const origin = request.headers.get("origin");
   if (request.headers.get("sec-fetch-site") === "cross-site")
     return Response.json(
@@ -52,31 +52,6 @@ export function guardRequest(
         { status: 403 },
       );
     }
-  const forwarded =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
-  const now = Date.now(),
-    windowMs = 60_000,
-    limit = kind === "generate" ? 12 : 30;
-  let bucket = limits.get(forwarded);
-  if (!bucket || now - bucket.started >= windowMs) {
-    bucket = { started: now, count: 0 };
-    if (limits.size >= 10_000) {
-      const oldest = limits.keys().next().value;
-      if (oldest) limits.delete(oldest);
-    }
-    limits.set(forwarded, bucket);
-  }
-  if (++bucket.count > limit)
-    return Response.json(
-      { error: "Too many requests. Wait a minute and try again." },
-      {
-        status: 429,
-        headers: { "Retry-After": "60", "Cache-Control": "no-store" },
-      },
-    );
-  if (limits.size > 10_000)
-    for (const [ip, value] of limits)
-      if (now - value.started >= windowMs) limits.delete(ip);
   return undefined;
 }
 export async function readJson(

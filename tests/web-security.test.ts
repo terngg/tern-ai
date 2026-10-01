@@ -47,31 +47,15 @@ test("model IDs and request/file byte bounds are validated locally", () => {
   assert.equal(MAX_BODY, 300_000);
   assert.equal(MAX_UPLOAD, 16_384);
 });
-test("provider endpoints reject cross-origin requests and apply a bounded local request rate", () => {
-  const cross = new Request("https://tern.test/api/ai/generate", {
-    method: "POST",
-    headers: { origin: "https://attacker.test", host: "tern.test" },
-  });
-  assert.equal(guardRequest(cross, "generate")?.status, 403);
-  const ip = `test-${Math.random()}`;
-  for (let i = 0; i < 12; i++)
-    assert.equal(
-      guardRequest(
-        new Request("https://tern.test/api/ai/generate", {
-          method: "POST",
-          headers: { "x-forwarded-for": ip },
-        }),
-        "generate",
-      ),
-      undefined,
-    );
-  const limited = guardRequest(
-    new Request("https://tern.test/api/ai/generate", {
-      method: "POST",
-      headers: { "x-forwarded-for": ip },
-    }),
-    "generate",
+test("legacy origin guard rejects cross-origin; router limits are tested against PostgreSQL", () => {
+  assert.equal(
+    guardRequest(
+      new Request("https://tern.test/api/ai/generate", {
+        method: "POST",
+        headers: { origin: "https://attacker.test", host: "tern.test" },
+      }),
+      "generate",
+    )?.status,
+    403,
   );
-  assert.equal(limited?.status, 429);
-  assert.equal(limited?.headers.get("retry-after"), "60");
 });

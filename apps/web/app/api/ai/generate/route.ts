@@ -1,22 +1,13 @@
+import { Assistant, defaults, type Config } from "@tern-ai/core";
+import { readJson, localIndex, MAX_UPLOAD } from "../../../../lib/server.js";
+import { authenticate } from "../../../../lib/router/auth.js";
+import { RouterStore, rateLimit } from "../../../../lib/router/store.js";
+import { RoutedClient } from "../../../../lib/router/engine.js";
 import {
-  ApiKeyPool,
-  Assistant,
-  defaults,
-  ProviderClient,
-  providerRegistry,
-  type Config,
-  type Credential,
-  type ProviderId,
-} from "@tern-ai/core";
-import {
-  readJson,
-  localIndex,
-  validKey,
-  validModel,
-  MAX_UPLOAD,
-  providerErrorMessage,
-  guardRequest,
-} from "../../../../lib/server.js";
+  PublicError,
+  RouteError,
+  safeError,
+} from "../../../../lib/router/errors.js";
 import type { FileContext } from "../../../../../../src/utils/files.js";
 import type { Message } from "../../../../../../src/openrouter/client.js";
 
@@ -88,8 +79,14 @@ function attachments(value: unknown): FileContext[] {
   });
 }
 export async function POST(request: Request): Promise<Response> {
-  const blocked = guardRequest(request, "generate");
-  if (blocked) return blocked;
+  let store: RouterStore;
+  try {
+    const user = await authenticate(request);
+    await rateLimit("generate:" + user.id, 12);
+    store = new RouterStore(user.id);
+  } catch (error) {
+    return safeError(error);
+  }
   let input: Record<string, unknown>;
   try {
     input = await readJson(request);
@@ -99,91 +96,19 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400, headers: { "Cache-Control": "no-store" } },
     );
   }
-  const providerMode = input.providerMode;
-  if (!["auto", "gemini", "openrouter"].includes(String(providerMode)))
-    return Response.json(
-      { error: "Choose Auto, Gemini, or OpenRouter." },
-      { status: 400 },
-    );
   if (
     typeof input.prompt !== "string" ||
-    input.prompt.trim().length === 0 ||
+    !input.prompt.trim() ||
     input.prompt.length > 8192
   )
     return Response.json(
-      { error: "Enter a prompt (up to 8 KiB).", code: "bad_request" },
+      { error: "Enter a prompt (up to 8 KiB)." },
       { status: 400 },
     );
-  const keyInput =
-    input.keys && typeof input.keys === "object"
-      ? (input.keys as Record<string, unknown>)
-      : {};
-  const credentials: Credential[] = [];
-  const providersToInspect: ProviderId[] =
-    providerMode === "auto"
-      ? (["gemini", "openrouter"] as ProviderId[])
-      : [providerMode as ProviderId];
-
-  for (const provider of providersToInspect) {
-    const raw =
-      typeof keyInput[provider] === "string"
-        ? (keyInput[provider] as string).trim()
-        : "";
-    if (raw) {
-      if (!validKey(provider, raw)) {
-        if (providerMode !== "auto") {
-          return Response.json(
-            {
-              error: `The ${provider === "gemini" ? "Gemini" : "OpenRouter"} API key format is invalid.`,
-            },
-            { status: 400 },
-          );
-        }
-        continue;
-      }
-      credentials.push({
-        id: `${provider}-web`,
-        provider,
-        key: raw,
-        source: "environment",
-      });
-    }
-  }
-  const enabled =
-    providerMode === "auto"
-      ? credentials.length > 0
-      : credentials.some((c) => c.provider === providerMode);
-  if (!enabled)
-    return Response.json(
-      {
-        error:
-          "No key is configured for the selected provider. Open Settings to connect one.",
-        code: "no_provider",
-      },
-      { status: 401 },
-    );
-  const requestedModels =
-    input.models && typeof input.models === "object"
-      ? (input.models as Record<string, unknown>)
-      : {};
-  const geminiModel = requestedModels.gemini ?? defaults.providers.gemini.model;
-  const openrouterModel =
-    requestedModels.openrouter ?? defaults.providers.openrouter.model;
-  if (!validModel(geminiModel) || !validModel(openrouterModel))
-    return Response.json({ error: "Invalid model ID." }, { status: 400 });
-  if (
-    providerMode === "auto" &&
-    openrouterModel !== "openrouter/free" &&
-    !openrouterModel.endsWith(":free") &&
-    !input.openrouterExplicit
-  )
-    return Response.json(
-      {
-        error:
-          "Automatic OpenRouter fallback is free-only. Explicitly choose a paid model in Settings to allow its use.",
-      },
-      { status: 400 },
-    );
+  const requestedModel =
+    typeof input.routerModel === "string" ? input.routerModel : "auto";
+  const poolId =
+    typeof input.poolId === "string" && input.poolId ? input.poolId : undefined;
   let history: Message[];
   let files: FileContext[];
   try {
@@ -195,35 +120,8 @@ export async function POST(request: Request): Promise<Response> {
       { status: 400 },
     );
   }
-  const scrub = (value: string): string =>
-    credentials.reduce(
-      (safe, c) => safe.split(c.key).join("[redacted]"),
-      value,
-    );
-  history = history.map((m) => ({ ...m, content: scrub(m.content) }));
-  files = files.map((f) => ({
-    ...f,
-    name: scrub(f.name),
-    content: scrub(f.content),
-  }));
-  input.prompt = scrub(input.prompt as string);
-  if (typeof input.summary === "string") input.summary = scrub(input.summary);
   const config: Config = structuredClone(defaults) as Config;
-  config.providerMode = providerMode as Config["providerMode"];
-  config.providers.gemini.enabled =
-    providerMode === "gemini" ||
-    (providerMode === "auto" &&
-      credentials.some((c) => c.provider === "gemini"));
-  config.providers.openrouter.enabled =
-    providerMode === "openrouter" ||
-    (providerMode === "auto" &&
-      credentials.some((c) => c.provider === "openrouter"));
-  config.providers.gemini.model = geminiModel;
-  config.providers.openrouter.model = openrouterModel;
-  if (providerMode === "openrouter") {
-    config.model = openrouterModel;
-  }
-  const pool = new ApiKeyPool(credentials);
+  const client = new RoutedClient(store, requestedModel, poolId);
   const controller = new AbortController();
   const abort = () => controller.abort();
   request.signal.addEventListener("abort", abort, { once: true });
@@ -237,7 +135,7 @@ export async function POST(request: Request): Promise<Response> {
   const stream = new ReadableStream<Uint8Array>({
     start(streamController) {
       const encoder = new TextEncoder();
-      const safeKeys = credentials.map((c) => c.key);
+
       const write = (type: string, data: unknown): void => {
         if (!disconnected)
           try {
@@ -250,36 +148,12 @@ export async function POST(request: Request): Promise<Response> {
       void (async () => {
         try {
           const index = await localIndex();
-          const client = new ProviderClient(
-            config,
-            pool,
-            providerRegistry(),
-            (message) => {
-              if (
-                /Partial draft discarded|Repairing validation errors/i.test(
-                  message,
-                )
-              )
-                write("reset", {});
-              write("status", {
-                message: providerErrorMessage(message, safeKeys),
-              });
-            },
-          );
-          const activeKey =
-            credentials.find(
-              (c) =>
-                c.provider ===
-                (providerMode === "openrouter" ? "openrouter" : "gemini"),
-            )?.key ||
-            credentials[0]?.key ||
-            "";
           const assistant = new Assistant(
             config,
             index,
             client,
             undefined,
-            activeKey,
+            "",
             (message) => {
               if (message.startsWith("Repairing validation errors"))
                 write("reset", {});
@@ -324,9 +198,7 @@ export async function POST(request: Request): Promise<Response> {
             explanation: result.explanation,
             code: result.code,
             filename: filename(
-              typeof input.filename === "string"
-                ? scrub(input.filename)
-                : undefined,
+              typeof input.filename === "string" ? input.filename : undefined,
               input.prompt as string,
             ),
             validation: result.validation
@@ -338,12 +210,14 @@ export async function POST(request: Request): Promise<Response> {
               : undefined,
             apiCount: result.apiCount,
             model: result.model,
-            provider:
-              used || (providerMode === "auto" ? "gemini" : providerMode),
+            provider: used || "unknown",
           });
           write("done", {});
         } catch (error) {
-          const message = providerErrorMessage(error, safeKeys);
+          const message =
+            error instanceof PublicError || error instanceof RouteError
+              ? error.message
+              : "Generation failed. Check your provider connection and retry.";
           if (timedOut)
             write("error", {
               message: "The provider request timed out. Try a smaller request.",
@@ -352,17 +226,13 @@ export async function POST(request: Request): Promise<Response> {
           else if (!controller.signal.aborted)
             write("error", {
               message,
-              code: (error as { kind?: string })?.kind || "request_failed",
+              code:
+                error instanceof RouteError ? error.category : "request_failed",
             });
           else write("stopped", {});
         } finally {
           clearTimeout(timeout);
           request.signal.removeEventListener("abort", abort);
-          pool.destroy();
-          for (const credential of credentials) credential.key = "";
-          safeKeys.fill("");
-          keyInput.gemini = "";
-          keyInput.openrouter = "";
           try {
             streamController.close();
           } catch {
