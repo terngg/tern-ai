@@ -27,6 +27,10 @@ import {
 } from "@/lib/context";
 import { importConversation } from "@/lib/import-chat";
 import { maskSecret, redactSecrets } from "@/lib/secrets";
+import { ProvidersView } from "./components/providers/ProvidersView";
+import { ProxyPoolsView } from "./components/providers/ProxyPoolsView";
+import { RoutingCombosView } from "./components/providers/RoutingCombosView";
+import { UsageLogsView } from "./components/providers/UsageLogsView";
 
 type Provider = "gemini" | "openrouter";
 type ApiModel = {
@@ -35,7 +39,14 @@ type ApiModel = {
   free?: boolean;
   contextLength?: number;
 };
-type Screen = "chat" | "settings" | "apis";
+type Screen =
+  | "chat"
+  | "settings"
+  | "apis"
+  | "providers"
+  | "pools"
+  | "routing"
+  | "usage";
 const KEY_NAMES: Record<Provider, string> = {
   gemini: "Gemini",
   openrouter: "OpenRouter",
@@ -277,6 +288,24 @@ export default function Home() {
           e instanceof Error ? e.message : "Could not open local chat storage.",
         );
       } finally {
+        if (typeof window !== "undefined") {
+          const urlParams = new URLSearchParams(window.location.search);
+          const screenParam = urlParams.get("screen") as Screen;
+          if (
+            screenParam &&
+            [
+              "chat",
+              "settings",
+              "apis",
+              "providers",
+              "pools",
+              "routing",
+              "usage",
+            ].includes(screenParam)
+          ) {
+            setScreen(screenParam);
+          }
+        }
         setReady(true);
       }
     })();
@@ -860,6 +889,30 @@ export default function Home() {
             <span>◌</span> Chats
           </button>
           <button
+            className={screen === "providers" ? "nav-active" : ""}
+            onClick={() => setScreen("providers")}
+          >
+            <span>⚡</span> Providers
+          </button>
+          <button
+            className={screen === "pools" ? "nav-active" : ""}
+            onClick={() => setScreen("pools")}
+          >
+            <span>⑆</span> Proxy Pools
+          </button>
+          <button
+            className={screen === "routing" ? "nav-active" : ""}
+            onClick={() => setScreen("routing")}
+          >
+            <span>⇄</span> Routing / Combos
+          </button>
+          <button
+            className={screen === "usage" ? "nav-active" : ""}
+            onClick={() => setScreen("usage")}
+          >
+            <span>◷</span> Usage & Logs
+          </button>
+          <button
             className={screen === "apis" ? "nav-active" : ""}
             onClick={() => setScreen("apis")}
           >
@@ -913,7 +966,7 @@ export default function Home() {
             <span>⚙</span> Settings
           </button>
           <div className="privacy-mini">
-            <span className="local-dot" /> Chats stay on this device
+            <span className="local-dot" /> Router Hub: Active • Vercel Edge
           </div>
           <button
             className="import-chat"
@@ -962,7 +1015,15 @@ export default function Home() {
                   : active?.title || "New chat"
                 : screen === "settings"
                   ? "Settings"
-                  : "GTPS API"}
+                  : screen === "providers"
+                    ? "Providers"
+                    : screen === "pools"
+                      ? "Proxy Pools"
+                      : screen === "routing"
+                        ? "Routing / Combos"
+                        : screen === "usage"
+                          ? "Usage & Logs"
+                          : "GTPS API"}
             </span>
             <span className="top-context">
               {screen === "chat" && active?.messages.length
@@ -1359,6 +1420,32 @@ export default function Home() {
                 </div>
               </div>
             </section>
+          </div>
+        ) : screen === "providers" ? (
+          <div className="page-scroll">
+            <ProvidersView
+              settings={settings}
+              onUpdateSettings={(s) =>
+                setSettings((prev) => ({ ...prev, ...s }))
+              }
+              rememberedKeys={keys}
+              onSyncKeys={(provider, key) => {
+                setKeys((prev) => ({ ...prev, [provider]: key }));
+                setKeySaved((prev) => ({ ...prev, [provider]: true }));
+              }}
+            />
+          </div>
+        ) : screen === "pools" ? (
+          <div className="page-scroll">
+            <ProxyPoolsView />
+          </div>
+        ) : screen === "routing" ? (
+          <div className="page-scroll">
+            <RoutingCombosView />
+          </div>
+        ) : screen === "usage" ? (
+          <div className="page-scroll">
+            <UsageLogsView />
           </div>
         ) : (
           <>

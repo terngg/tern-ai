@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@tern-ai/core": "0.3.0",
+    "lucide-react": "^1.49.0",
     "next": "16.3.x",
     "react": "19.2.x",
     "react-dom": "19.2.x",
@@ -18,10 +19,10 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@types/luaparse": "^0.2.12",
+    "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
-    "typescript": "^5.9.0",
-    "@types/node": "^24.0.0",
-    "@types/luaparse": "^0.2.12"
+    "typescript": "^5.9.0"
   }
 }
