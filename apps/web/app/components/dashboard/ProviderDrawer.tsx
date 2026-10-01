@@ -244,7 +244,7 @@ function ConnectionItem({
               disabled={busy || !c.enabled}
               onClick={() => void onAct({ action: "test", id: c.id })}
             >
-              {busy ? "Testing…" : "Test / discover"}
+              {busy ? "Testing…" : "Test / discover models"}
             </Button>
             <Button
               type="button"
