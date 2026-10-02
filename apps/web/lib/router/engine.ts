@@ -363,6 +363,7 @@ export class RoutedClient implements CompletionClient {
           inputTokens = result.inputTokens;
           outputTokens = result.outputTokens;
         }
+        if (!resultText.trim()) throw new RouteError("server_error");
         output.flush();
         this.lastModel = c.model;
         this.lastProvider = c.provider;

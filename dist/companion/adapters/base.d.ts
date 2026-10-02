@@ -5,7 +5,7 @@ export declare function runCommand(bin: string, args: string[], timeoutMs?: numb
     stderr: string;
     code: number;
 }>;
-export declare function spawnStreaming(bin: string, args: string[], signal?: AbortSignal): {
+export declare function spawnStreaming(bin: string, args: string[], signal?: AbortSignal, cwd?: string): {
     process: ChildProcess;
     stream: AsyncIterable<string>;
     kill: () => void;

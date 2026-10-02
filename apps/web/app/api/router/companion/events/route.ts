@@ -19,7 +19,8 @@ export async function GET(request: Request) {
     await relay.authenticateCompanion(companionId, token);
     const jobs = await relay.pollPendingJobs(companionId);
 
-    return NextResponse.json({ jobs });
+    const cancels = await relay.pollCancelledJobs(companionId);
+    return NextResponse.json({ jobs, cancels });
   } catch (err: unknown) {
     if (err instanceof PublicError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

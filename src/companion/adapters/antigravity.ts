@@ -11,7 +11,9 @@ import type {
 import { findBinary, runCommand, spawnStreaming } from "./base.js";
 import { parseAntigravityModels } from "./antigravity-models.js";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { mkdtemp, rm } from "node:fs/promises";
+import { antigravityPrompt, antigravityText } from "./antigravity-stream.js";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 export class AntigravityAdapter implements LocalProviderAdapter {
@@ -81,10 +83,14 @@ export class AntigravityAdapter implements LocalProviderAdapter {
       return;
     }
 
-    const lastMessage =
-      request.messages[request.messages.length - 1]?.content || "";
+    const lastMessage = antigravityPrompt(request.messages);
 
-    const args = ["-p", lastMessage];
+    const args = [
+      "-p",
+      lastMessage,
+      "--disable-slash-commands",
+    ];
+    args.push("--output-format", "stream-json", "--print-timeout", "85s");
     if (request.model === "antigravity-flash" || !request.model) {
       args.unshift("--model", "gemini-3.8-flash-medium");
     } else if (request.model === "antigravity-pro") {
@@ -93,15 +99,17 @@ export class AntigravityAdapter implements LocalProviderAdapter {
       args.unshift("--model", request.model);
     }
 
+    const workspace = await mkdtemp(join(tmpdir(), "tern-antigravity-"));
     const { stream, kill } = spawnStreaming(
       det.path,
       args,
       request.signal,
+      workspace,
     );
     this.activeProcesses.set(request.id, kill);
 
     try {
-      for await (const chunk of stream) {
+      for await (const chunk of antigravityText(stream)) {
         yield { type: "token", token: chunk };
       }
       yield { type: "done" };
@@ -111,7 +119,9 @@ export class AntigravityAdapter implements LocalProviderAdapter {
         error: (err as Error)?.message || "Antigravity execution failed",
       };
     } finally {
+      kill();
       this.activeProcesses.delete(request.id);
+      await rm(workspace, { recursive: true, force: true });
     }
   }
 

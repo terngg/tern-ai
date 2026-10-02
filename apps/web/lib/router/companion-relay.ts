@@ -202,6 +202,14 @@ export class CompanionRelay {
     return rows;
   }
 
+  async pollCancelledJobs(companionId: string): Promise<string[]> {
+    const { rows } = await this.db.query<{ id: string }>(
+      "SELECT id FROM tern_relay_jobs WHERE companion_id=$1 AND status='cancelled' AND updated_at > now() - interval '10 minutes'",
+      [companionId],
+    );
+    return rows.map((row) => row.id);
+  }
+
   async appendJobEvent(
     companionId: string,
     jobId: string,
@@ -209,18 +217,18 @@ export class CompanionRelay {
   ): Promise<void> {
     if (event.type === "token" && event.token) {
       await this.db.query(
-        "UPDATE tern_relay_jobs SET chunks = chunks || $1::jsonb, updated_at=now() WHERE id=$2 AND companion_id=$3",
+        "UPDATE tern_relay_jobs SET chunks = chunks || $1::jsonb, updated_at=now() WHERE id=$2 AND companion_id=$3 AND status IN ('pending', 'running')",
         [JSON.stringify([event.token]), jobId, companionId],
       );
     } else if (event.type === "done") {
       await this.db.query(
-        "UPDATE tern_relay_jobs SET status='completed', updated_at=now() WHERE id=$1 AND companion_id=$2",
+        "UPDATE tern_relay_jobs SET status='completed', updated_at=now() WHERE id=$1 AND companion_id=$2 AND status IN ('pending', 'running')",
         [jobId, companionId],
       );
     } else if (event.type === "error") {
       await this.db.query(
-        "UPDATE tern_relay_jobs SET status='error', error=$1, updated_at=now() WHERE id=$2 AND companion_id=$3",
-        [event.error || "Execution failed", jobId, companionId],
+        "UPDATE tern_relay_jobs SET status='error', error=$1, updated_at=now() WHERE id=$2 AND companion_id=$3 AND status IN ('pending', 'running')",
+        ["Local provider execution failed", jobId, companionId],
       );
     }
   }
@@ -266,8 +274,8 @@ export class CompanionRelay {
     while (Date.now() - start < timeoutMs) {
       if (signal?.aborted) {
         await this.db.query(
-          "UPDATE tern_relay_jobs SET status='cancelled', updated_at=now() WHERE id=$1",
-          [jobId],
+          "UPDATE tern_relay_jobs SET status='cancelled', updated_at=now() WHERE id=$1 AND user_id=$2 AND status IN ('pending', 'running')",
+          [jobId, userId],
         );
         throw new RouteError("cancelled");
       }
@@ -294,15 +302,20 @@ export class CompanionRelay {
       }
 
       if (job.status === "completed") {
+        if (!text.trim()) throw new RouteError("server_error");
         return { text };
       }
       if (job.status === "error") {
-        throw new RouteError("provider_overload", 503);
+        throw new RouteError("server_error", 502);
       }
 
       await new Promise((r) => setTimeout(r, 200));
     }
 
+    await this.db.query(
+      "UPDATE tern_relay_jobs SET status='cancelled', updated_at=now() WHERE id=$1 AND user_id=$2 AND status IN ('pending', 'running')",
+      [jobId, userId],
+    );
     throw new RouteError("timeout", 504);
   }
 }

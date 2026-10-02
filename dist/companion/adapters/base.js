@@ -43,42 +43,49 @@ export async function runCommand(bin, args, timeoutMs = 5000) {
         };
     }
 }
-export function spawnStreaming(bin, args, signal) {
+export function spawnStreaming(bin, args, signal, cwd) {
     const child = spawn(bin, args, {
         stdio: ["ignore", "pipe", "pipe"],
+        ...(cwd ? { cwd } : {}),
     });
-    if (signal) {
-        if (signal.aborted) {
-            child.kill("SIGKILL");
-        }
-        else {
-            signal.addEventListener("abort", () => {
-                child.kill("SIGKILL");
-            });
-        }
-    }
-    async function* readStdout() {
-        if (!child.stdout)
+    let closed = false;
+    // Drain diagnostics without retaining or exposing credentials and prompts.
+    child.stderr?.resume();
+    const completion = new Promise((resolve) => {
+        child.once("error", () => resolve(false));
+        child.once("close", (code) => {
+            closed = true;
+            resolve(code === 0);
+        });
+    });
+    const kill = () => {
+        if (closed)
             return;
-        for await (const chunk of child.stdout) {
-            yield chunk.toString("utf8");
+        child.kill("SIGTERM");
+        setTimeout(() => { if (!closed)
+            child.kill("SIGKILL"); }, 1000).unref();
+    };
+    const abort = () => kill();
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted)
+        kill();
+    async function* readStdout() {
+        try {
+            child.stdout?.setEncoding("utf8");
+            if (child.stdout)
+                for await (const chunk of child.stdout)
+                    yield String(chunk);
+            const success = await completion;
+            if (signal?.aborted)
+                throw new Error("Local provider request cancelled.");
+            if (!success)
+                throw new Error("Local provider process failed. Check CLI sign-in and diagnostics locally.");
+        }
+        finally {
+            signal?.removeEventListener("abort", abort);
+            kill();
         }
     }
-    return {
-        process: child,
-        stream: readStdout(),
-        kill: () => {
-            try {
-                child.kill("SIGTERM");
-                setTimeout(() => {
-                    if (!child.killed)
-                        child.kill("SIGKILL");
-                }, 1000).unref();
-            }
-            catch {
-                /* ignore */
-            }
-        },
-    };
+    return { process: child, stream: readStdout(), kill };
 }
 //# sourceMappingURL=base.js.map

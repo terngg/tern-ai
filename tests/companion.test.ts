@@ -433,3 +433,50 @@ test("shared router routes seamlessly to companion connection and records trace"
     await pg.close();
   }
 });
+
+test("relay cancellation reaches only its companion and late events cannot revive a job", async () => {
+  const { pg, db } = await pgFixture();
+  try {
+    const relay = new CompanionRelay(db);
+    const { code } = await relay.generatePairCode("user-1");
+    const { companionId } = await relay.redeemPairCode(code, "linux", "test");
+    await assert.rejects(relay.dispatchAndStreamJob("user-1", "antigravity", "test-flash", [], undefined, undefined, undefined, undefined, 1), /timed out/);
+    const cancelled = await relay.pollCancelledJobs(companionId);
+    assert.equal(cancelled.length, 1);
+    assert.deepEqual(await relay.pollCancelledJobs("other-companion"), []);
+    for (const event of [{ type: "token" as const, token: "late" }, { type: "done" as const }, { type: "error" as const, error: "secret" }])
+      await relay.appendJobEvent(companionId, cancelled[0]!, event);
+    const { rows } = await db.query("SELECT status, chunks, error FROM tern_relay_jobs WHERE id=$1", [cancelled[0]]);
+    assert.equal(rows[0]!.status, "cancelled");
+    assert.deepEqual(rows[0]!.chunks, []);
+    assert.equal(rows[0]!.error, null);
+  } finally { await pg.close(); }
+});
+
+test("empty companion completions are failures and errors never persist CLI secrets", async () => {
+  const { pg, db } = await pgFixture();
+  try {
+    const relay = new CompanionRelay(db);
+    const { code } = await relay.generatePairCode("user-1");
+    const { companionId } = await relay.redeemPairCode(code, "linux", "test");
+    for (const type of ["done", "error"] as const) {
+      const worker = async () => {
+        for (let i = 0; i < 50; i++) {
+          const jobs = await relay.pollPendingJobs(companionId);
+          if (jobs[0]) {
+            await relay.appendJobEvent(companionId, jobs[0].id, { type, error: "secret credential diagnostic" });
+            return;
+          }
+          await new Promise(r => setTimeout(r, 20));
+        }
+        assert.fail("No dispatched job");
+      };
+      await Promise.all([
+        assert.rejects(relay.dispatchAndStreamJob("user-1", "antigravity", "test-flash", []), /server error/),
+        worker(),
+      ]);
+    }
+    const { rows } = await db.query("SELECT error FROM tern_relay_jobs WHERE companion_id=$1", [companionId]);
+    assert.ok(rows.every(r => !String(r.error).includes("secret")));
+  } finally { await pg.close(); }
+});

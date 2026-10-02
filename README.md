@@ -368,6 +368,15 @@ discovered, not necessarily inference-verified. Update and restart Tern Companio
 after upgrading the CLI adapter. Saved Flash/Pro aliases remain compatible when
 their corresponding real model IDs are discovered.
 
+Antigravity chat runs in a fresh temporary working directory with the full GTPS
+context and conversation included in its prompt. It uses the official headless
+`stream-json` protocol, forwards only answer text, and requires a successful,
+nonempty final result. CLI diagnostics stay local. No permission-bypass flag is
+enabled. A timeout/cancellation is relayed back to the paired Companion; late
+events cannot turn a cancelled request into a successful one. Restart Companion
+after installing an adapter update; deploying the web app alone does not update
+the CLI on the paired machine.
+
 The Next.js app in `apps/web` keeps the existing GTPS knowledge base, Lua
 assistant, validation/repair, attachments, history, imports and artifact downloads.
 Its provider layer is now a user-isolated PostgreSQL router. The CLI retains its
