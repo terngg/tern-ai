@@ -15,7 +15,7 @@ export function localProviderError(diagnostic: unknown): LocalProviderError {
   const text = typeof diagnostic === "string" ? diagnostic.slice(0, 16_384) : "";
   const category: LocalErrorCategory =
     /insufficient[_ ](?:credits|balance)|credit balance.*(?:exhausted|too low)|billing_hard_limit/i.test(text) ? "quota_exhausted" :
-    /429|rate.?limit|quota.*(?:exceed|exhaust)|resource[_ ]exhausted/i.test(text) ? "rate_limit" :
+    /429|rate.?limit|quota|resource[_ ]exhausted/i.test(text) ? "rate_limit" :
     /401|unauthenticated|authentication required|sign.?in required|invalid[_ ](?:api[_ ]key|token)/i.test(text) ? "auth_failure" :
     /403|permission.?denied|access.?denied/i.test(text) ? "permission_denied" :
     /deadline|timed? ?out|timeout/i.test(text) ? "timeout" :

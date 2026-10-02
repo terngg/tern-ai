@@ -61,6 +61,7 @@ test("CLI classifies temporary quota as a cooldown without leaking diagnostics",
   const cases = [
     ["429 quota exceeded token=private", "rate_limit"],
     ["Quota exhausted for model private", "rate_limit"],
+    ["Not enough quota available private", "rate_limit"],
     ["insufficient credits private", "quota_exhausted"],
     ["authentication required private", "auth_failure"],
     ["403 permission denied private", "permission_denied"],
