@@ -48,3 +48,13 @@ These screenshots use explicit **test-only UI fixtures**, including synthetic he
 ## Limits
 
 Browser testing uses desktop Chromium and mobile viewport emulation, not physical Android/iOS devices or a screen reader. The operating system file chooser remains necessary for user-authorized attachments; its input is visually hidden behind an accessible product button. Provider availability and inference quality were not changed by this UI work. No new provider runtime verification is claimed from UI fixtures. Existing routes are retained, including query-based dashboard navigation and the `/providers` redirect.
+
+## Deployment verification
+
+Application commit: `7b46625`.
+
+- Preview: https://tern-7pxt9aqyi-terngg.vercel.app — production build succeeded, all 17 Playwright tests passed against the deployed URL.
+- Production: https://tern-ai-swart.vercel.app — deployment https://tern-kl5euvhgy-terngg.vercel.app.
+- Both deployments passed checks for public homepage/security headers, all 485 GTPS entries, authentication on router entrypoints, cross-origin protection and retirement of the old simulated test endpoint.
+- On both preview and production, a short-lived authenticated verification session read the existing account's actual Antigravity model catalog. At 1440, 390 and 360px, search and exact model selection, provider locking, Escape, trigger focus restoration, zero native controls and zero horizontal overflow passed. Provider drawer, account settings and mobile navigation also passed. No uncaught browser errors or native dialogs occurred.
+- Verification sessions were removed after testing. The live-account UI check did not issue inference or modify provider connections. Full browser suites use isolated browser storage and intercept mutation requests with test fixtures.
