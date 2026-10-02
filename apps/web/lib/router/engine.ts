@@ -9,6 +9,7 @@ import { protectedFetch, type Transport } from "./transport.js";
 import type { Connection, Strategy, Trace } from "./types.js";
 import { virtualModels } from "./registry.js";
 import { companionState } from "./companion-state.js";
+import { canonicalSelection } from "./model-selection.js";
 export function redact(value: string, secrets: string[]): string {
   for (const secret of secrets)
     if (secret) value = value.split(secret).join("[redacted]");
@@ -191,11 +192,12 @@ export class RoutedClient implements CompletionClient {
       (c) => c.enabled && c.provider === this.preferredProvider,
     )) throw new PublicError("Preferred provider is unavailable. Choose an enabled provider or clear the preference.", 409);
     if (!virtual) {
-      const separator = this.requestedModel.indexOf("::");
+      const selection = canonicalSelection(this.requestedModel, all);
+      const separator = selection.indexOf("::");
       if (separator < 0)
         throw new PublicError("Select a virtual model or connection::model.");
-      const id = this.requestedModel.slice(0, separator),
-        model = this.requestedModel.slice(separator + 2);
+      const id = selection.slice(0, separator),
+        model = selection.slice(separator + 2);
       candidates = candidates
         .filter(
           (c) =>

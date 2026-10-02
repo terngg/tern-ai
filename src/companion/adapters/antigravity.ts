@@ -9,14 +9,10 @@ import type {
   InstallGuide,
 } from "../types.js";
 import { findBinary, runCommand, spawnStreaming } from "./base.js";
+import { parseAntigravityModels } from "./antigravity-models.js";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-
-const AGY_MODELS: LocalModel[] = [
-  { id: "antigravity-flash", name: "Antigravity Flash (Fast)" },
-  { id: "antigravity-pro", name: "Antigravity Pro (Deep reasoning)" },
-];
 
 export class AntigravityAdapter implements LocalProviderAdapter {
   readonly id = "antigravity";
@@ -35,7 +31,7 @@ export class AntigravityAdapter implements LocalProviderAdapter {
       return {
         installed: true,
         path: bin,
-        version: code === 0 && stdout ? stdout : "2.0",
+        version: code === 0 && stdout ? stdout : undefined,
       };
     }
     return { installed: false };
@@ -57,7 +53,16 @@ export class AntigravityAdapter implements LocalProviderAdapter {
   }
 
   async listModels(): Promise<LocalModel[]> {
-    return AGY_MODELS;
+    const detected = await this.detect();
+    if (!detected.installed || !detected.path) return [];
+    // Official metadata command; uses the local CLI session, never uploads it.
+    const result = await runCommand(detected.path, ["models"], 10_000);
+    if (result.code !== 0)
+      throw new Error("Antigravity model discovery failed. Check local CLI sign-in and connectivity.");
+    const models = parseAntigravityModels(result.stdout);
+    if (!models.length)
+      throw new Error("Antigravity returned no recognized models. Update the local CLI and retry.");
+    return models;
   }
 
   async health(): Promise<Health> {

@@ -360,6 +360,14 @@ Jika project ini membantu, star repository untuk menyimpannya dan bagikan pengal
 Kode project menggunakan [MIT](LICENSE). Dokumentasi engine berasal dari materi yang diberikan pemilik project; verifikasi hak distribusinya sebelum publikasi.
 ## Tern AI Web
 
+Antigravity model choices come from the paired machine's official `agy models`
+command, following the [Antigravity CLI model selection documentation](https://antigravity.google/docs/cli/headless/#select-a-model-effort-or-agent).
+Companion reports the returned IDs and names; Tern does not maintain an invented
+Antigravity catalog or infer quota, pricing, or context limits. A listed model is
+discovered, not necessarily inference-verified. Update and restart Tern Companion
+after upgrading the CLI adapter. Saved Flash/Pro aliases remain compatible when
+their corresponding real model IDs are discovered.
+
 The Next.js app in `apps/web` keeps the existing GTPS knowledge base, Lua
 assistant, validation/repair, attachments, history, imports and artifact downloads.
 Its provider layer is now a user-isolated PostgreSQL router. The CLI retains its

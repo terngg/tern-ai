@@ -1,4 +1,5 @@
 import type { Connection, DetectedLocalProvider } from "./types.js";
+import { canonicalModel } from "./model-selection.js";
 
 // Leaves room for cleanup before the 105s request / 120s Vercel deadlines.
 export const COMPANION_TIMEOUT_MS = 90_000;
@@ -14,7 +15,7 @@ export function companionState(
   const blocked = current?.quota === "exhausted" ||
     current?.health === "permission_denied" || cooling;
   return {
-    model: current?.model || models[0]?.id || "",
+    model: canonicalModel(detected.id, current?.model || models[0]?.id || "", models),
     models,
     modelsAt: detected.models.length ? now : current?.modelsAt ?? null,
     health: !detected.authenticated ? "auth_failure"

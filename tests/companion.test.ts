@@ -8,6 +8,8 @@ import { CompanionRelay } from "../apps/web/lib/router/companion-relay.js";
 import { RouterStore, type Database } from "../apps/web/lib/router/store.js";
 import { RoutedClient, eligible, checkConnection, unavailableReason } from "../apps/web/lib/router/engine.js";
 import type { DetectedLocalProvider } from "../apps/web/lib/router/types.js";
+import { parseAntigravityModels } from "../src/companion/adapters/antigravity-models.js";
+import { canonicalSelection } from "../apps/web/lib/router/model-selection.js";
 
 process.env.TERN_CREDENTIAL_KEY = "ab".repeat(32);
 
@@ -16,6 +18,61 @@ const antigravity: DetectedLocalProvider = {
   models: [{ id: "test-flash", name: "Test Flash", source: "discovered" }],
   health: { ok: true },
 };
+
+test("Antigravity catalogs parse actual CLI model IDs without inventing models or capabilities", () => {
+  const models = parseAntigravityModels("Fetching available models...\n" +
+    "\u001b[32mgemini-3.8-flash-medium\u001b[0m\tGemini 3.8 Flash (Medium)\r\n" +
+    "claude-sonnet-4-6\tClaude Sonnet 4.6 (Thinking)\n" +
+    "gemini-3.8-flash-medium\tGemini 3.8 Flash (Medium)\n" +
+    "invalid model\tInvalid\nno-name\t\n");
+  assert.deepEqual(models, [
+    { id: "gemini-3.8-flash-medium", name: "Gemini 3.8 Flash (Medium)" },
+    { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6 (Thinking)" },
+  ]);
+  assert.deepEqual(parseAntigravityModels("Authentication required. Sign in locally."), []);
+});
+
+test("Antigravity heartbeat replaces legacy aliases with discovered IDs and old selections still route", async () => {
+  const { pg, db } = await pgFixture();
+  try {
+    const relay = new CompanionRelay(db), store = new RouterStore("user-1", db);
+    const { code } = await relay.generatePairCode("user-1");
+    const paired = await relay.redeemPairCode(code, "linux", "test");
+    const legacy: DetectedLocalProvider = { ...antigravity,
+      models: [{ id: "antigravity-pro", name: "Antigravity Pro", source: "configured" }] };
+    await relay.syncHeartbeat(paired.companionId, "linux", "test", [legacy]);
+    const [connection] = await store.connections();
+    const discovered: DetectedLocalProvider = { ...antigravity,
+      models: [{ id: "gemini-3.1-pro-high", name: "Gemini 3.1 Pro (High)", source: "discovered" }] };
+    await relay.syncHeartbeat(paired.companionId, "linux", "test", [discovered]);
+    const current = await store.connection(connection!.id);
+    assert.equal(current.model, "gemini-3.1-pro-high");
+    assert.deepEqual(current.models, discovered.models);
+    const selected = `${current.id}::antigravity-pro`;
+    assert.equal(canonicalSelection(selected, [current]), `${current.id}::gemini-3.1-pro-high`);
+    assert.equal(canonicalSelection(selected, []), selected);
+    assert.equal(canonicalSelection(selected, [{ ...current, models: [] }]), selected);
+    const runner = async () => {
+      for (let i = 0; i < 40; i++) {
+        const jobs = await relay.pollPendingJobs(paired.companionId);
+        if (jobs.length) {
+          assert.equal(jobs[0]!.model, "gemini-3.1-pro-high");
+          await relay.appendJobEvent(paired.companionId, jobs[0]!.id, { type: "token", token: "model selected" });
+          await relay.appendJobEvent(paired.companionId, jobs[0]!.id, { type: "done" });
+          return;
+        }
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      assert.fail("No companion job dispatched");
+    };
+    const [text] = await Promise.all([
+      new RoutedClient(store, selected).complete({ model: selected, messages: [{ role: "user", content: "hello" }], stream: true, temperature: 0, free: false }),
+      runner(),
+    ]);
+    assert.equal(text, "model selected");
+    assert.equal((await store.traces())[0]!.selectedModel, "gemini-3.1-pro-high");
+  } finally { await pg.close(); }
+});
 
 test("heartbeat repairs missing defaults and expired cooldowns without bypassing active restrictions", async () => {
   const { pg, db } = await pgFixture();

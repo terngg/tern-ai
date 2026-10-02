@@ -7,6 +7,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { providers, virtualModels } from "../../../lib/router/registry";
+import { canonicalSelection } from "../../../lib/router/model-selection";
 import type {
   Connection,
   PoolConfig,
@@ -575,8 +576,9 @@ export function RouterSelector({
     ]).values()],
   }));
   const automatic = virtualModels.includes(model);
+  const selectedModel = canonicalSelection(model, accounts);
   const modelAvailable = automatic || catalog.some(({ connection, models }) =>
-    models.some((m) => `${connection.id}::${m.id}` === model),
+    models.some((m) => `${connection.id}::${m.id}` === selectedModel),
   );
   const providerIds = [...new Set(accounts.filter((c) => c.model).map((c) => c.provider))];
   const providerName = (id: string) => providers.find((p) => p.id === id)?.name || id;
@@ -591,7 +593,7 @@ export function RouterSelector({
       <div className="chat-routing-controls">
         <label>
           <span>Model</span>
-          <select aria-label="Routing model" value={model}
+          <select aria-label="Routing model" value={selectedModel}
             onChange={(e) => onChange(e.target.value, pool, provider)}>
             <optgroup label="Automatic routing">
               {virtualModels.map((m) => <option value={m} key={m}>{modes[m] || m}</option>)}
