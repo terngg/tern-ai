@@ -108,6 +108,7 @@ export interface Trace {
   provider: string;
   connectionId: string;
   routingMode: string;
+  preferredProvider?: string;
   retries: number;
   fallbackPath: string[];
   latencyMs: number;

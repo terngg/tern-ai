@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { authenticate } from "./auth.js";
 import { RouterStore, rateLimit } from "./store.js";
 import { RoutedClient } from "./engine.js";
+import { preferredProvider } from "./preferences.js";
 import { PublicError, RouteError, safeError } from "./errors.js";
 import { readJson } from "../server.js";
 import type { Message } from "../../../../src/openrouter/client.js";
@@ -62,6 +63,7 @@ export async function chatApi(
       typeof input.poolId === "string" ? input.poolId : undefined,
       undefined,
       maxTokens,
+      preferredProvider(input.preferredProvider),
     );
     const controller = new AbortController(),
       signal = AbortSignal.any([

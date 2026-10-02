@@ -216,6 +216,7 @@ export default function Home() {
   const [settings, setSettings] = useState<LocalSettings>(defaultSettings);
   const [routerModel, setRouterModel] = useState("auto");
   const [routerPool, setRouterPool] = useState("");
+  const [firstProvider, setFirstProvider] = useState("");
   const [notice, setNotice] = useState("");
   const [progress, setProgress] = useState("");
   const [busy, setBusy] = useState(false);
@@ -259,12 +260,18 @@ export default function Home() {
   useEffect(() => {
     void (async () => {
       try {
-        const [storedChats, savedSettings] = await Promise.all([
+        const [storedChats, savedSettings, routing] = await Promise.all([
           chatStorage.all(),
           preferences.get<LocalSettings>("settings"),
+          preferences.get<{ model: string; pool: string; provider: string }>("routingSelection"),
         ]);
         setChats(storedChats);
         setSettings({ ...defaultSettings, ...savedSettings });
+        if (routing) {
+          if (typeof routing.model === "string") setRouterModel(routing.model);
+          if (typeof routing.pool === "string") setRouterPool(routing.pool);
+          if (typeof routing.provider === "string") setFirstProvider(routing.provider);
+        }
         // Erase legacy browser credentials. Users explicitly re-enter keys into encrypted server storage.
         await preferences.put("rememberedKeys", {});
         await preferences.put("tern_router_connections_v1", {});
@@ -306,6 +313,11 @@ export default function Home() {
       void preferences.put("settings", settings);
     }
   }, [settings, ready]);
+  useEffect(() => {
+    if (ready) void preferences.put("routingSelection", {
+      model: routerModel, pool: routerPool, provider: firstProvider,
+    });
+  }, [routerModel, routerPool, firstProvider, ready]);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [active?.messages, busy]);
@@ -424,6 +436,7 @@ export default function Home() {
         body: JSON.stringify({
           routerModel,
           poolId: routerPool,
+          preferredProvider: firstProvider,
           task,
           prompt: user.content,
           history: ctx.history,
@@ -633,6 +646,9 @@ export default function Home() {
     setChats([]);
     setActiveId("");
     setSettings(defaultSettings);
+    setRouterModel("auto");
+    setRouterPool("");
+    setFirstProvider("");
     setFiles([]);
     setDraft("");
     setTask("chat");
@@ -883,14 +899,6 @@ export default function Home() {
             </span>
           </div>
           <div className="top-right">
-            <RouterSelector
-              model={routerModel}
-              pool={routerPool}
-              onChange={(model, pool) => {
-                setRouterModel(model);
-                setRouterPool(pool);
-              }}
-            />
             <button
               className="icon-btn theme-btn"
               title="Toggle theme"
@@ -905,6 +913,18 @@ export default function Home() {
             </button>
           </div>
         </header>
+        {screen === "chat" && (
+          <RouterSelector
+            model={routerModel}
+            pool={routerPool}
+            provider={firstProvider}
+            onChange={(model, pool, provider) => {
+              setRouterModel(model);
+              setRouterPool(pool);
+              setFirstProvider(provider);
+            }}
+          />
+        )}
         {screen === "settings" ? (
           <div className="page-scroll">
             <RouterDashboard screen="settings" />

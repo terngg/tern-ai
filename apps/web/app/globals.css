@@ -448,6 +448,49 @@ select:focus-visible {
 .theme-btn {
   margin-left: 3px;
 }
+.chat-routing {
+  flex: none;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+}
+.chat-routing-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+.chat-routing-controls label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+.chat-routing-controls select {
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 11px;
+  text-overflow: ellipsis;
+}
+.chat-routing-controls select:disabled { opacity: 0.6; }
+.chat-routing-hint {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.4;
+}
+@media (max-width: 600px) {
+  .chat-routing { padding: 8px 12px; }
+  .chat-routing-controls { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 7px; }
+  .chat-routing-controls label:first-child { grid-column: 1 / -1; }
+}
 .chat-scroll {
   flex: 1;
   overflow-y: auto;

@@ -3,6 +3,7 @@ import { readJson, localIndex, MAX_UPLOAD } from "../../../../lib/server.js";
 import { authenticate } from "../../../../lib/router/auth.js";
 import { RouterStore, rateLimit } from "../../../../lib/router/store.js";
 import { RoutedClient } from "../../../../lib/router/engine.js";
+import { preferredProvider } from "../../../../lib/router/preferences.js";
 import {
   PublicError,
   RouteError,
@@ -111,7 +112,9 @@ export async function POST(request: Request): Promise<Response> {
     typeof input.poolId === "string" && input.poolId ? input.poolId : undefined;
   let history: Message[];
   let files: FileContext[];
+  let firstProvider: string | undefined;
   try {
+    firstProvider = preferredProvider(input.preferredProvider);
     history = messages(input.history);
     files = attachments(input.files);
   } catch (error) {
@@ -121,7 +124,7 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
   const config: Config = structuredClone(defaults) as Config;
-  const client = new RoutedClient(store, requestedModel, poolId);
+  const client = new RoutedClient(store, requestedModel, poolId, undefined, undefined, firstProvider);
   const controller = new AbortController();
   const abort = () => controller.abort();
   request.signal.addEventListener("abort", abort, { once: true });

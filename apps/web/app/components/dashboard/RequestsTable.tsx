@@ -121,6 +121,7 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
                         </div>
                         <div className="text-text-muted text-[11px]">
                           Requested: {t.requestedModel} · {t.retries} retries
+                          {t.preferredProvider && ` · First choice: ${t.preferredProvider}`}
                         </div>
                         {t.fallbackPath.length > 0 && (
                           <details className="mt-1 text-[10px] text-text-subtle cursor-pointer">

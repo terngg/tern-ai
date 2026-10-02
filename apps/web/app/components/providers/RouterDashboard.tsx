@@ -537,66 +537,107 @@ export function RouterDashboard({
 }
 
 export function RouterSelector({
-  model,
-  pool,
-  onChange,
+  model, pool, provider, onChange,
 }: {
   model: string;
   pool: string;
-  onChange: (model: string, pool: string) => void;
+  provider: string;
+  onChange: (model: string, pool: string, provider: string) => void;
 }) {
   const [data, setData] = useState<Snapshot | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     const load = () => {
       void api("/api/router")
         .then(setData)
-        .catch(() => setData(null));
+        .catch(() => setData(null))
+        .finally(() => setLoaded(true));
     };
     load();
     window.addEventListener("tern-router-changed", load);
-    return () => window.removeEventListener("tern-router-changed", load);
+    window.addEventListener("focus", load);
+    return () => {
+      window.removeEventListener("tern-router-changed", load);
+      window.removeEventListener("focus", load);
+    };
   }, []);
 
-  return (
-    <div className="flex items-center gap-1.5">
-      <label className="provider-pill">
-        <select
-          aria-label="Routing model"
-          value={model}
-          onChange={(e) => onChange(e.target.value, pool)}
-          className="h-8 px-2.5 rounded-lg border border-border-subtle bg-surface text-text-main text-xs outline-none focus:border-primary cursor-pointer"
-        >
-          {virtualModels.map((m) => (
-            <option value={m} key={m}>
-              {m}
-            </option>
-          ))}
-          {data?.connections
-            .filter((c) => c.enabled && c.model)
-            .map((c) => (
-              <option key={c.id} value={c.id + "::" + c.model}>
-                {c.label} / {c.model}
-              </option>
-            ))}
-        </select>
-      </label>
+  const selectedPool = data?.pools.find((p) => p.id === pool && p.enabled);
+  const accounts = (data?.connections || []).filter((c) =>
+    c.enabled && (!pool || selectedPool?.connections.includes(c.id)),
+  );
+  const catalog = accounts.map((c) => ({
+    connection: c,
+    models: [...new Map<string, { id: string; name: string }>([
+      ...(c.model ? [[c.model, { id: c.model, name: c.model }] as const] : []),
+      ...c.models.map((m) => [m.id, m] as const),
+    ]).values()],
+  }));
+  const automatic = virtualModels.includes(model);
+  const modelAvailable = automatic || catalog.some(({ connection, models }) =>
+    models.some((m) => `${connection.id}::${m.id}` === model),
+  );
+  const providerIds = [...new Set(accounts.filter((c) => c.model).map((c) => c.provider))];
+  const providerName = (id: string) => providers.find((p) => p.id === id)?.name || id;
+  const modes: Record<string, string> = {
+    auto: "Auto · balanced", "auto/balanced": "Auto · balanced",
+    "auto/fast": "Auto · fastest measured", "auto/cheap": "Auto · lowest known cost",
+    "auto/quality": "Auto · account priority",
+  };
 
-      <select
-        className="router-pool-select h-8 px-2 rounded-lg border border-border-subtle bg-surface text-text-main text-xs outline-none focus:border-primary cursor-pointer"
-        aria-label="Routing pool"
-        value={pool}
-        onChange={(e) => onChange(model, e.target.value)}
-      >
-        <option value="">All my accounts</option>
-        {data?.pools
-          .filter((p) => p.enabled)
-          .map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-      </select>
-    </div>
+  return (
+    <section className="chat-routing" aria-label="Chat routing">
+      <div className="chat-routing-controls">
+        <label>
+          <span>Model</span>
+          <select aria-label="Routing model" value={model}
+            onChange={(e) => onChange(e.target.value, pool, provider)}>
+            <optgroup label="Automatic routing">
+              {virtualModels.map((m) => <option value={m} key={m}>{modes[m] || m}</option>)}
+            </optgroup>
+            {!modelAvailable && <option value={model} disabled>Selected model unavailable</option>}
+            {catalog.filter(({ models }) => models.length).map(({ connection: c, models }) => (
+              <optgroup key={c.id} label={`${providerName(c.provider)} · ${c.label} · ${connectionStatus(c)}`}>
+                {models.map((m) => (
+                  <option key={m.id} value={`${c.id}::${m.id}`}>
+                    {providerName(c.provider)} / {m.name === m.id ? m.id : `${m.name} (${m.id})`}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>Try provider first</span>
+          <select aria-label="Preferred provider" value={automatic ? provider : ""}
+            disabled={!automatic}
+            onChange={(e) => onChange(model, pool, e.target.value)}>
+            <option value="">{automatic ? "Automatic order" : "Fixed by selected model"}</option>
+            {provider && !providerIds.includes(provider) && <option value={provider} disabled>Selected provider unavailable</option>}
+            {providerIds.map((id) => <option key={id} value={id}>{providerName(id)}</option>)}
+          </select>
+        </label>
+        <label>
+          <span>Account pool</span>
+          <select aria-label="Routing pool" value={pool}
+            onChange={(e) => onChange("auto", e.target.value, "")}>
+            <option value="">All my accounts</option>
+            {pool && !selectedPool && <option value={pool} disabled>Selected pool unavailable</option>}
+            {data?.pools.filter((p) => p.enabled).map((p) => (
+              <option key={p.id} value={p.id}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <p className="chat-routing-hint">
+        {!loaded ? "Loading your connections…" : !data
+          ? "Sign in in Providers to choose your connected models."
+          : !accounts.length ? "Add an enabled connection in Providers to choose a model."
+          : !automatic ? "Uses this exact model and account. Select Auto to allow provider fallback."
+          : provider ? `${providerName(provider)} is tried first when eligible, then other accounts in this pool. Uses each account’s default model.`
+          : "Auto uses each account’s default model and the selected routing strategy."}
+      </p>
+    </section>
   );
 }

@@ -170,6 +170,7 @@ export class RoutedClient implements CompletionClient {
     readonly poolId?: string,
     readonly transport: Transport = protectedFetch,
     readonly maxTokens = 8192,
+    readonly preferredProvider?: string,
   ) {}
   async complete(options: CompletionOptions): Promise<string> {
     const all = await this.store.connections();
@@ -186,6 +187,9 @@ export class RoutedClient implements CompletionClient {
       strategy = pool.strategy;
     }
     const virtual = virtualModels.includes(this.requestedModel);
+    if (virtual && this.preferredProvider && !candidates.some(
+      (c) => c.enabled && c.provider === this.preferredProvider,
+    )) throw new PublicError("Preferred provider is unavailable. Choose an enabled provider or clear the preference.", 409);
     if (!virtual) {
       const separator = this.requestedModel.indexOf("::");
       if (separator < 0)
@@ -250,6 +254,14 @@ export class RoutedClient implements CompletionClient {
         ) <= metadata.contextWindow
       );
     });
+    // Stable partition preserves the pool/strategy order within each group.
+    // Only eligible, owner-scoped accounts can participate in either group.
+    if (virtual && this.preferredProvider) {
+      candidates = [
+        ...candidates.filter((c) => c.provider === this.preferredProvider),
+        ...candidates.filter((c) => c.provider !== this.preferredProvider),
+      ];
+    }
     if (!candidates.length)
       throw new PublicError(
         this.requestedModel === "auto/cheap"
@@ -278,6 +290,7 @@ export class RoutedClient implements CompletionClient {
         provider: c.provider,
         connectionId: c.id,
         routingMode: this.poolId || this.requestedModel,
+        ...(virtual && this.preferredProvider ? { preferredProvider: this.preferredProvider } : {}),
         retries: path.length,
         fallbackPath: [...path, c.id],
         latencyMs: 0,

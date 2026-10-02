@@ -33,6 +33,7 @@ import {
   tokenRedactor,
 } from "../apps/web/lib/router/engine.js";
 import { classify, RouteError } from "../apps/web/lib/router/errors.js";
+import { preferredProvider } from "../apps/web/lib/router/preferences.js";
 import {
   validateHeaders,
   updateConnection,
@@ -428,6 +429,49 @@ test("secret split across tokens is redacted before emission", () => {
   for (const char of "before " + secret.key + " after") redactor.push(char);
   redactor.flush();
   assert.equal(output, "before [redacted] after");
+});
+test("provider preference is validated and routes first with bounded fallback, pool and owner isolation", async () => {
+  assert.equal(preferredProvider("antigravity"), "antigravity");
+  assert.equal(preferredProvider(""), undefined);
+  for (const value of [null, {}, 1, "a".repeat(81), "../other"])
+    assert.throws(() => preferredProvider(value), /Invalid preferred provider/);
+  const { pg, a, b } = await fixture();
+  try {
+    const primary = await add(a, "openai"), preferred = await add(a, "groq");
+    await a.patch(primary.id, { priority: 0 });
+    await a.patch(preferred.id, { priority: 10 });
+    await add(b, "deepseek");
+    const attempts: string[] = [];
+    const transport: Transport = async (url) => {
+      attempts.push(String(url));
+      return String(url).includes("groq.com") ? json({}, 429) : sse("fallback works");
+    };
+    const client = new RoutedClient(a, "auto/quality", undefined, transport, 8192, "groq");
+    assert.equal(await client.complete({ ...options, stream: true, temperature: 0, free: false }), "fallback works");
+    assert.equal(attempts.length, 2);
+    assert.match(attempts[0]!, /groq.com/);
+    assert.match(attempts[1]!, /openai.com/);
+    assert.equal((await a.connection(preferred.id)).health, "rate_limit");
+    assert.ok((await a.traces()).every((t) => t.preferredProvider === "groq"));
+
+    // An active cooldown skips the preference without a retry loop.
+    attempts.length = 0;
+    await client.complete({ ...options, stream: true, temperature: 0, free: false });
+    assert.equal(attempts.length, 1);
+    assert.match(attempts[0]!, /openai.com/);
+
+    await a.savePool({ id: "only-openai", name: "Restricted", connections: [primary.id], enabled: true, strategy: "priority" });
+    for (const [pool, provider] of [["only-openai", "groq"], [undefined, "deepseek"]] as const) {
+      await assert.rejects(new RoutedClient(a, "auto", pool, transport, 8192, provider)
+        .complete({ ...options, temperature: 0, free: false }), /Preferred provider is unavailable/);
+    }
+    // An exact model selection never falls back to the preferred provider.
+    attempts.length = 0;
+    const explicit = new RoutedClient(a, `${primary.id}::${primary.model}`, undefined, transport, 8192, "groq");
+    await explicit.complete({ ...options, stream: true, temperature: 0, free: false });
+    assert.equal(attempts.length, 1);
+    assert.match(attempts[0]!, /openai.com/);
+  } finally { await pg.close(); }
 });
 test("bounded fallback persists rate-limit cooldown and trace; partial output never switches accounts", async () => {
   const { pg, a } = await fixture();
