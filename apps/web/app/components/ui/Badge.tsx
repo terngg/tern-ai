@@ -1,12 +1,7 @@
 import React from "react";
 
 export type BadgeVariant =
-  | "default"
-  | "primary"
-  | "success"
-  | "warning"
-  | "error"
-  | "info";
+  "default" | "primary" | "success" | "warning" | "error" | "info";
 
 export type BadgeSize = "sm" | "md" | "lg";
 
@@ -53,12 +48,12 @@ export function Badge({
 }: BadgeProps) {
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full font-medium border ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
+      className={`ui-badge ui-badge-${variant} ui-badge-${size} inline-flex items-center gap-1.5 rounded-full font-medium border ${variantStyles[variant]} ${sizeStyles[size]} ${className}`}
       {...props}
     >
       {dot && (
         <span
-          className={`size-1.5 rounded-full shrink-0 ${dotColors[variant]}`}
+          className={`ui-badge-dot size-1.5 rounded-full shrink-0 ${dotColors[variant]}`}
           aria-hidden="true"
         />
       )}

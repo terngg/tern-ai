@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import "./providers.css";
+import "./styles/tokens.css";
+import "./styles/controls.css";
+import "./styles/overlays.css";
+import "./styles/refinements.css";
 
 export const metadata: Metadata = {
   title: "Tern AI — GTPS Lua Assistant",

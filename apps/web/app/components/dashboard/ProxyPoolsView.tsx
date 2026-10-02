@@ -1,6 +1,8 @@
 import React, { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown } from "lucide-react";
 import type { Connection, PoolConfig } from "../../../lib/router/types";
+import { Select } from "../ui/Select";
+import { Form } from "../ui/Form";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
@@ -95,7 +97,9 @@ export function ProxyPoolsView({
                     variant="danger"
                     disabled={busy}
                     icon={<Trash2 size={12} />}
-                    onClick={() => void onAct({ action: "deletePool", id: p.id })}
+                    onClick={() =>
+                      void onAct({ action: "deletePool", id: p.id })
+                    }
                   >
                     Delete
                   </Button>
@@ -179,8 +183,17 @@ function PoolEditor({
   disabled: boolean;
   save: (body: unknown) => Promise<boolean>;
 }) {
+  const [selected, setSelected] = useState<string[]>(
+    initial?.connections || [],
+  );
+  const move = (index: number, delta: number) =>
+    setSelected((current) => {
+      const next = [...current];
+      [next[index], next[index + delta]] = [next[index + delta]!, next[index]!];
+      return next;
+    });
   return (
-    <form
+    <Form
       className="p-5 rounded-xl border border-border-subtle bg-surface space-y-4 shadow-sm text-xs"
       onSubmit={async (e) => {
         e.preventDefault();
@@ -199,7 +212,10 @@ function PoolEditor({
             enabled: initial?.enabled ?? true,
           })
         ) {
-          if (!initial) form.reset();
+          if (!initial) {
+            form.reset();
+            setSelected([]);
+          }
         }
       }}
     >
@@ -222,63 +238,106 @@ function PoolEditor({
 
         <label className="flex flex-col gap-1 text-text-muted">
           Selection Strategy
-          <select
+          <Select
+            label="Selection strategy"
             name="strategy"
             defaultValue={initial?.strategy || "priority"}
-            className="px-2.5 py-1.5 rounded-lg border border-border-subtle bg-bg text-text-main text-xs outline-none focus:border-primary"
-          >
-            {[
+            options={[
               "priority",
               "round_robin",
               "least_recently_used",
               "health_aware",
-            ].map((s) => (
-              <option key={s} value={s}>
-                {s.replaceAll("_", " ")}
-              </option>
-            ))}
-          </select>
+            ].map((value) => ({ value, label: value.replaceAll("_", " ") }))}
+          />
         </label>
       </div>
 
-      <label className="flex flex-col gap-1 text-text-muted">
-        Connection IDs in fallback order (one per line)
-        <textarea
-          name="connections"
-          required
-          rows={3}
-          defaultValue={initial?.connections.join("\n")}
-          placeholder="Paste connection IDs here"
-          className="px-2.5 py-1.5 rounded-lg border border-border-subtle bg-bg text-text-main text-xs outline-none focus:border-primary font-mono"
+      <div className="ui-field">
+        <span>Accounts in fallback order</span>
+        <input type="hidden" name="connections" value={selected.join("\n")} />
+        <Select
+          label="Add pool account"
+          title="Add an account"
+          value=""
+          disabled={disabled}
+          searchable
+          options={[
+            { value: "", label: "Choose an account to add", disabled: true },
+            ...connections
+              .filter((c) => !selected.includes(c.id))
+              .map((c) => ({
+                value: c.id,
+                label: c.label,
+                description: `${c.provider} · ${c.model || "No default model"}`,
+              })),
+          ]}
+          onChange={(id) => {
+            if (id) setSelected((current) => [...current, id]);
+          }}
         />
-      </label>
-
-      {connections.length > 0 && (
-        <details className="text-[11px] text-text-subtle cursor-pointer">
-          <summary>Available connection IDs ({connections.length})</summary>
-          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 p-2 rounded-lg bg-surface-2/40 border border-border-subtle/50">
-            {connections.map((c) => (
-              <div key={c.id} className="p-1.5 rounded bg-bg font-mono">
-                <div className="text-text-main font-sans font-medium">
-                  {c.label} ({c.provider})
+        <ol className="ui-pool-accounts">
+          {selected.map((id, index) => {
+            const account = connections.find((c) => c.id === id);
+            return (
+              <li key={id}>
+                <span className="ui-pool-position">{index + 1}</span>
+                <div>
+                  <strong>{account?.label || "Removed connection"}</strong>
+                  <small>{account?.provider || id}</small>
                 </div>
-                <code className="text-[10px] text-text-muted">{c.id}</code>
-              </div>
-            ))}
-          </div>
-        </details>
-      )}
+                <button
+                  type="button"
+                  className="ui-icon-button"
+                  aria-label={`Move ${account?.label || "account"} up`}
+                  disabled={disabled || index === 0}
+                  onClick={() => move(index, -1)}
+                >
+                  <ArrowUp size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="ui-icon-button"
+                  aria-label={`Move ${account?.label || "account"} down`}
+                  disabled={disabled || index === selected.length - 1}
+                  onClick={() => move(index, 1)}
+                >
+                  <ArrowDown size={14} />
+                </button>
+                <button
+                  type="button"
+                  className="ui-icon-button"
+                  aria-label={`Remove ${account?.label || "account"} from draft pool`}
+                  disabled={disabled}
+                  onClick={() =>
+                    setSelected((current) =>
+                      current.filter((value) => value !== id),
+                    )
+                  }
+                >
+                  <Trash2 size={14} />
+                </button>
+              </li>
+            );
+          })}
+        </ol>
+        {!selected.length && (
+          <small>
+            Add at least one account. Requests follow the selected strategy and
+            fallback order.
+          </small>
+        )}
+      </div>
 
       <div className="flex justify-end pt-1">
         <Button
           type="submit"
           variant="primary"
           size="sm"
-          disabled={disabled || !connections.length}
+          disabled={disabled || !selected.length}
         >
           {initial ? "Update pool" : "Save pool"}
         </Button>
       </div>
-    </form>
+    </Form>
   );
 }

@@ -27,10 +27,12 @@ import {
 } from "@/lib/context";
 import { importConversation } from "@/lib/import-chat";
 import { redactSecrets } from "@/lib/secrets";
-import {
-  RouterDashboard,
-  RouterSelector,
-} from "./components/providers/RouterDashboard";
+import { RouterDashboard } from "./components/providers/RouterDashboard";
+import { RouterSelector } from "./components/chat/RouterSelector";
+import { Select } from "./components/ui/Select";
+import { Dropdown } from "./components/ui/Dropdown";
+import { UIProvider, useUI } from "./components/ui/UIProvider";
+import { ResponsiveSidebar } from "./components/layout/ResponsiveSidebar";
 import {
   AlertCircle,
   AlertTriangle,
@@ -38,12 +40,10 @@ import {
   ArrowUpRight,
   BarChart2,
   Check,
-  ChevronDown,
   Code2,
   FileCode,
   FileSearch,
   GitFork,
-  Info,
   Layers,
   Menu,
   MessageSquare,
@@ -150,6 +150,7 @@ function Code({
   language?: string;
   toolbar?: boolean;
 }) {
+  const { copyText } = useUI();
   const lua = language === "lua" || !language;
   const lines = children.split("\n");
   return (
@@ -157,9 +158,7 @@ function Code({
       {toolbar && (
         <div className="code-head">
           <span>{lua ? "Lua" : "Code"}</span>
-          <button onClick={() => void navigator.clipboard.writeText(children)}>
-            Copy
-          </button>
+          <button onClick={() => void copyText(children)}>Copy</button>
           <button onClick={() => saveDownload("gtps_script.lua", children)}>
             Download .lua
           </button>
@@ -210,6 +209,14 @@ function highlight(line: string, lua: boolean): React.ReactNode {
 }
 
 export default function Home() {
+  return (
+    <UIProvider>
+      <HomeContent />
+    </UIProvider>
+  );
+}
+
+function HomeContent() {
   const [screen, setScreen] = useState<Screen>("chat");
   const [chats, setChats] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState("");
@@ -217,7 +224,13 @@ export default function Home() {
   const [routerModel, setRouterModel] = useState("auto");
   const [routerPool, setRouterPool] = useState("");
   const [firstProvider, setFirstProvider] = useState("");
-  const [notice, setNotice] = useState("");
+  const { notify, askConfirm, askText, copyText } = useUI();
+  const setNotice = useCallback(
+    (message: string) => {
+      if (message) notify(message, "info");
+    },
+    [notify],
+  );
   const [progress, setProgress] = useState("");
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState("");
@@ -263,14 +276,17 @@ export default function Home() {
         const [storedChats, savedSettings, routing] = await Promise.all([
           chatStorage.all(),
           preferences.get<LocalSettings>("settings"),
-          preferences.get<{ model: string; pool: string; provider: string }>("routingSelection"),
+          preferences.get<{ model: string; pool: string; provider: string }>(
+            "routingSelection",
+          ),
         ]);
         setChats(storedChats);
         setSettings({ ...defaultSettings, ...savedSettings });
         if (routing) {
           if (typeof routing.model === "string") setRouterModel(routing.model);
           if (typeof routing.pool === "string") setRouterPool(routing.pool);
-          if (typeof routing.provider === "string") setFirstProvider(routing.provider);
+          if (typeof routing.provider === "string")
+            setFirstProvider(routing.provider);
         }
         // Erase legacy browser credentials. Users explicitly re-enter keys into encrypted server storage.
         await preferences.put("rememberedKeys", {});
@@ -314,9 +330,12 @@ export default function Home() {
     }
   }, [settings, ready]);
   useEffect(() => {
-    if (ready) void preferences.put("routingSelection", {
-      model: routerModel, pool: routerPool, provider: firstProvider,
-    });
+    if (ready)
+      void preferences.put("routingSelection", {
+        model: routerModel,
+        pool: routerPool,
+        provider: firstProvider,
+      });
   }, [routerModel, routerPool, firstProvider, ready]);
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
@@ -570,7 +589,8 @@ export default function Home() {
           "Browser storage is unavailable. Your chat could not be saved.",
         );
       }
-      if (!controller.signal.aborted) setNotice(message);
+      if (!controller.signal.aborted)
+        notify("Could not complete the response", "error", message);
       setProgress("");
     } finally {
       abortRef.current = undefined;
@@ -583,17 +603,34 @@ export default function Home() {
       setNotice("Stop generation before renaming a chat.");
       return;
     }
-    const name = window.prompt("Rename chat", chat.title);
-    if (name?.trim())
+    const name = await askText({
+      title: "Rename chat",
+      description: "Choose a name that makes this conversation easy to find.",
+      initialValue: chat.title,
+      label: "Chat name",
+      action: "Save name",
+    });
+    if (name?.trim()) {
       await updateChat({ ...chat, title: name.trim().slice(0, 80) });
+      notify("Chat renamed", "success");
+    }
   };
   const deleteChat = async (chat: Conversation) => {
     if (busy) {
       setNotice("Stop generation before deleting a chat.");
       return;
     }
-    if (!window.confirm(`Delete “${chat.title}” from this device?`)) return;
+    if (
+      !(await askConfirm({
+        title: "Delete chat?",
+        description: `“${chat.title}” will be deleted from this device. This cannot be undone.`,
+        action: "Delete",
+        danger: true,
+      }))
+    )
+      return;
     await chatStorage.remove(chat.id);
+    notify("Chat deleted", "success");
     const next = chats.filter((c) => c.id !== chat.id);
     setChats(next);
     if (activeId === chat.id) setActiveId(next[0]?.id || "");
@@ -612,7 +649,7 @@ export default function Home() {
       await updateChat(imported);
       setActiveId(imported.id);
       setScreen("chat");
-      setNotice("Conversation imported locally.");
+      notify("Conversation imported locally.", "success");
     } catch (e) {
       setNotice(e instanceof Error ? e.message : "Could not import chat.");
     }
@@ -623,12 +660,20 @@ export default function Home() {
       setNotice("Stop generation before deleting chats.");
       return;
     }
-    if (!window.confirm("Delete all conversations stored on this device?"))
+    if (
+      !(await askConfirm({
+        title: "Delete all chats?",
+        description:
+          "All conversations stored on this device will be permanently removed.",
+        action: "Delete all chats",
+        danger: true,
+      }))
+    )
       return;
     await chatStorage.clear();
     setChats([]);
     setActiveId("");
-    setNotice("All conversations deleted from this browser.");
+    notify("All conversations deleted from this browser.", "success");
   };
   const clearData = async () => {
     if (busy) {
@@ -636,9 +681,13 @@ export default function Home() {
       return;
     }
     if (
-      !window.confirm(
-        "Delete every local chat, setting, cached model list, and remembered API key?",
-      )
+      !(await askConfirm({
+        title: "Reset Tern Web data?",
+        description:
+          "Delete every local chat, setting, and cached model list from this browser. Your server account is not deleted.",
+        action: "Reset data",
+        danger: true,
+      }))
     )
       return;
     await chatStorage.clear();
@@ -653,7 +702,7 @@ export default function Home() {
     setDraft("");
     setTask("chat");
     setScreen("chat");
-    setNotice("Tern Web data cleared from this browser.");
+    notify("Tern Web data cleared from this browser.", "success");
   };
   const action = (value: "generate" | "fix" | "review" | "explain") => {
     setTask(value);
@@ -669,7 +718,7 @@ export default function Home() {
     )
     .slice(0, 200);
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       void send();
     }
@@ -677,179 +726,207 @@ export default function Home() {
 
   return (
     <main className="app-shell" data-ready={ready}>
-      <aside
-        className={`sidebar ${mobileNav ? "sidebar-open" : ""} ${!settings.sidebarOpen ? "sidebar-collapsed" : ""}`}
-      >
-        <div className="sidebar-traffic-lights">
-          <span className="traffic-dot traffic-red" />
-          <span className="traffic-dot traffic-amber" />
-          <span className="traffic-dot traffic-green" />
-        </div>
-        <div className="brand">
-          <div className="brand-logo-icon">
-            <img src="/logo.png" alt="Tern AI" />
+      <ResponsiveSidebar open={mobileNav} onClose={() => setMobileNav(false)}>
+        <aside
+          className={`sidebar ${mobileNav ? "sidebar-open" : ""} ${!settings.sidebarOpen ? "sidebar-collapsed" : ""}`}
+        >
+          <div className="sidebar-traffic-lights">
+            <span className="traffic-dot traffic-red" />
+            <span className="traffic-dot traffic-amber" />
+            <span className="traffic-dot traffic-green" />
           </div>
-          <div className="brand-text">
-            <strong>Tern AI</strong>
-            <small>v0.3.0 · Router Hub</small>
+          <div className="brand">
+            <div className="brand-logo-icon">
+              <img src="/logo.png" alt="Tern AI" />
+            </div>
+            <div className="brand-text">
+              <strong>Tern AI</strong>
+              <small>v0.3.0 · Router Hub</small>
+            </div>
+            <button
+              className="icon-btn mobile-close"
+              onClick={() => setMobileNav(false)}
+              aria-label="Close menu"
+            >
+              <X size={16} />
+            </button>
           </div>
           <button
-            className="icon-btn mobile-close"
-            onClick={() => setMobileNav(false)}
-            aria-label="Close menu"
+            className="new-chat"
+            onClick={createChat}
+            disabled={!ready || busy}
           >
-            <X size={16} />
+            <Plus size={14} /> New chat
           </button>
-        </div>
-        <button className="new-chat" onClick={createChat}>
-          <Plus size={14} /> New chat
-        </button>
-        <nav className="side-nav">
-          <button
-            className={screen === "chat" ? "nav-active" : ""}
-            onClick={() => setScreen("chat")}
-          >
-            <MessageSquare size={16} /> Chats
-          </button>
-          <button
-            className={screen === "providers" ? "nav-active" : ""}
-            onClick={() => {
-              setScreen("providers");
-              setMobileNav(false);
-            }}
-          >
-            <Server size={16} /> Providers
-          </button>
-          <button
-            className={screen === "pools" ? "nav-active" : ""}
-            onClick={() => {
-              setScreen("pools");
-              setMobileNav(false);
-            }}
-          >
-            <Network size={16} /> Proxy Pools
-          </button>
-          <button
-            className={screen === "routing" ? "nav-active" : ""}
-            onClick={() => {
-              setScreen("routing");
-              setMobileNav(false);
-            }}
-          >
-            <GitFork size={16} /> Routing
-          </button>
-          <button
-            className={screen === "usage" ? "nav-active" : ""}
-            onClick={() => {
-              setScreen("usage");
-              setMobileNav(false);
-            }}
-          >
-            <BarChart2 size={16} /> Usage
-          </button>
-          <button
-            className={screen === "models" ? "nav-active" : ""}
-            onClick={() => {
-              setScreen("models");
-              setMobileNav(false);
-            }}
-          >
-            <Layers size={16} /> Models
-          </button>
-          <button
-            className={screen === "quota" ? "nav-active" : ""}
-            onClick={() => {
-              setScreen("quota");
-              setMobileNav(false);
-            }}
-          >
-            <PieChart size={16} /> Quota
-          </button>
-          <button
-            className={screen === "requests" ? "nav-active" : ""}
-            onClick={() => {
-              setScreen("requests");
-              setMobileNav(false);
-            }}
-          >
-            <FileSearch size={16} /> Requests
-          </button>
-          <button
-            className={screen === "apis" ? "nav-active" : ""}
-            onClick={() => setScreen("apis")}
-          >
-            <Code2 size={16} /> GTPS API
-          </button>
-        </nav>
-        <div className="history-label">YOUR CHATS</div>
-        <div className="chat-list">
-          {Object.entries(groups).map(([group, list]) => (
-            <section key={group}>
-              <div className="group-label">{group}</div>
-              {list.map((chat) => (
-                <div
-                  className={`chat-row ${activeId === chat.id ? "chat-selected" : ""}`}
-                  key={chat.id}
-                >
-                  <button
-                    className="chat-title"
-                    onClick={() => chooseChat(chat)}
-                    title={chat.title}
+          <nav className="side-nav" aria-label="Main navigation">
+            <button
+              className={screen === "chat" ? "nav-active" : ""}
+              aria-current={screen === "chat" ? "page" : undefined}
+              onClick={() => {
+                setScreen("chat");
+                setMobileNav(false);
+              }}
+            >
+              <MessageSquare size={16} /> Chats
+            </button>
+            <button
+              className={screen === "providers" ? "nav-active" : ""}
+              aria-current={screen === "providers" ? "page" : undefined}
+              onClick={() => {
+                setScreen("providers");
+                setMobileNav(false);
+              }}
+            >
+              <Server size={16} /> Providers
+            </button>
+            <button
+              className={screen === "pools" ? "nav-active" : ""}
+              aria-current={screen === "pools" ? "page" : undefined}
+              onClick={() => {
+                setScreen("pools");
+                setMobileNav(false);
+              }}
+            >
+              <Network size={16} /> Proxy Pools
+            </button>
+            <button
+              className={screen === "routing" ? "nav-active" : ""}
+              aria-current={screen === "routing" ? "page" : undefined}
+              onClick={() => {
+                setScreen("routing");
+                setMobileNav(false);
+              }}
+            >
+              <GitFork size={16} /> Routing
+            </button>
+            <button
+              className={screen === "usage" ? "nav-active" : ""}
+              aria-current={screen === "usage" ? "page" : undefined}
+              onClick={() => {
+                setScreen("usage");
+                setMobileNav(false);
+              }}
+            >
+              <BarChart2 size={16} /> Usage
+            </button>
+            <button
+              className={screen === "models" ? "nav-active" : ""}
+              aria-current={screen === "models" ? "page" : undefined}
+              onClick={() => {
+                setScreen("models");
+                setMobileNav(false);
+              }}
+            >
+              <Layers size={16} /> Models
+            </button>
+            <button
+              className={screen === "quota" ? "nav-active" : ""}
+              aria-current={screen === "quota" ? "page" : undefined}
+              onClick={() => {
+                setScreen("quota");
+                setMobileNav(false);
+              }}
+            >
+              <PieChart size={16} /> Quota
+            </button>
+            <button
+              className={screen === "requests" ? "nav-active" : ""}
+              aria-current={screen === "requests" ? "page" : undefined}
+              onClick={() => {
+                setScreen("requests");
+                setMobileNav(false);
+              }}
+            >
+              <FileSearch size={16} /> Requests
+            </button>
+            <button
+              className={screen === "apis" ? "nav-active" : ""}
+              aria-current={screen === "apis" ? "page" : undefined}
+              onClick={() => {
+                setScreen("apis");
+                setMobileNav(false);
+              }}
+            >
+              <Code2 size={16} /> GTPS API
+            </button>
+          </nav>
+          <div className="history-label">YOUR CHATS</div>
+          <div className="chat-list">
+            {!chats.length && (
+              <p className="sidebar-empty">
+                No chats yet. Start a conversation to keep your work here.
+              </p>
+            )}
+            {Object.entries(groups).map(([group, list]) => (
+              <section key={group}>
+                <div className="group-label">{group}</div>
+                {list.map((chat) => (
+                  <div
+                    className={`chat-row ${activeId === chat.id ? "chat-selected" : ""}`}
+                    key={chat.id}
                   >
-                    {chat.title}
-                  </button>
-                  <div className="chat-actions">
                     <button
-                      title="Rename"
-                      onClick={() => void renameChat(chat)}
+                      className="chat-title"
+                      onClick={() => chooseChat(chat)}
+                      title={chat.title}
                     >
-                      <MoreHorizontal size={14} />
+                      {chat.title}
                     </button>
-                    <div className="chat-menu">
-                      <button onClick={() => exportChat(chat)}>Export</button>
-                      <button onClick={() => void renameChat(chat)}>
-                        Rename
-                      </button>
-                      <button onClick={() => void deleteChat(chat)}>
-                        Delete
-                      </button>
+                    <div className="chat-actions">
+                      <Dropdown
+                        label={`Chat actions: ${chat.title}`}
+                        icon={<MoreHorizontal size={16} />}
+                        items={[
+                          {
+                            label: "Rename",
+                            onSelect: () => void renameChat(chat),
+                          },
+                          { label: "Export", onSelect: () => exportChat(chat) },
+                          {
+                            label: "Delete",
+                            danger: true,
+                            onSelect: () => void deleteChat(chat),
+                          },
+                        ]}
+                      />
                     </div>
                   </div>
-                </div>
-              ))}
-            </section>
-          ))}
-        </div>
-        <div className="sidebar-bottom">
-          <button
-            className={screen === "settings" ? "nav-active" : ""}
-            onClick={() => setScreen("settings")}
-          >
-            <Settings size={16} /> Settings
-          </button>
-          <div className="privacy-mini">Chat history stored on this device</div>
-          <button
-            className="import-chat"
-            onClick={() => document.getElementById("import-chat")?.click()}
-          >
-            <Upload size={14} /> Import conversation
-          </button>
-          <input
-            id="import-chat"
-            type="file"
-            accept="application/json,.json"
-            hidden
-            onChange={(e) => void importChat(e)}
-          />
-        </div>
-      </aside>
-      {mobileNav && (
-        <button
-          className="scrim"
-          onClick={() => setMobileNav(false)}
-          aria-label="Close navigation"
-        />
-      )}
+                ))}
+              </section>
+            ))}
+          </div>
+          <div className="sidebar-bottom">
+            <button
+              className={screen === "settings" ? "nav-active" : ""}
+              aria-current={screen === "settings" ? "page" : undefined}
+              onClick={() => {
+                setScreen("settings");
+                setMobileNav(false);
+              }}
+            >
+              <Settings size={16} /> Settings
+            </button>
+            <div className="privacy-mini">
+              Chat history stored on this device
+            </div>
+            <button
+              className="import-chat"
+              onClick={() => document.getElementById("import-chat")?.click()}
+            >
+              <Upload size={14} /> Import conversation
+            </button>
+            <input
+              id="import-chat"
+              type="file"
+              accept="application/json,.json"
+              className="sr-only"
+              tabIndex={-1}
+              aria-label="Import conversation file"
+              onChange={(e) => void importChat(e)}
+            />
+          </div>
+        </aside>
+      </ResponsiveSidebar>
       <section className="workspace">
         <header className="topbar">
           <div className="top-left">
@@ -902,6 +979,7 @@ export default function Home() {
             <button
               className="icon-btn theme-btn"
               title="Toggle theme"
+              aria-label="Toggle theme"
               onClick={() =>
                 setSettings((s) => ({
                   ...s,
@@ -909,7 +987,11 @@ export default function Home() {
                 }))
               }
             >
-              {settings.theme === "light" ? <Sun size={15} /> : <Moon size={15} />}
+              {settings.theme === "light" ? (
+                <Sun size={15} />
+              ) : (
+                <Moon size={15} />
+              )}
             </button>
           </div>
         </header>
@@ -929,6 +1011,25 @@ export default function Home() {
           <div className="page-scroll">
             <RouterDashboard screen="settings" />
             <section className="settings-page">
+              <article className="setting-card">
+                <h2>Appearance</h2>
+                <p>Choose how Tern AI looks on this device.</p>
+                <Select
+                  label="Theme"
+                  value={settings.theme}
+                  onChange={(theme) =>
+                    setSettings((current) => ({
+                      ...current,
+                      theme: theme as LocalSettings["theme"],
+                    }))
+                  }
+                  options={[
+                    { value: "dark", label: "Dark" },
+                    { value: "light", label: "Light" },
+                    { value: "system", label: "Use system setting" },
+                  ]}
+                />
+              </article>
               <article className="setting-card">
                 <h2>Browser data</h2>
                 <p>
@@ -977,6 +1078,7 @@ export default function Home() {
               <div className="api-search">
                 <Search size={14} />
                 <input
+                  aria-label="Search GTPS APIs"
                   placeholder="Search 485 APIs…"
                   value={apiSearch}
                   onChange={(e) => setApiSearch(e.target.value)}
@@ -1101,16 +1203,20 @@ export default function Home() {
                     <div className="connect-prompt">
                       <span className="connect-light" />
                       <div>
-                        <strong>Connect an AI provider to start</strong>
+                        <strong>Your models, your accounts</strong>
                         <small>
-                          Sign in and add an encrypted provider connection.
+                          Choose a model above or manage your provider
+                          connections.
                         </small>
                       </div>
                       <button
                         className="secondary-btn"
-                        onClick={() => setScreen("settings")}
+                        onClick={() => {
+                          setScreen("providers");
+                          setMobileNav(false);
+                        }}
                       >
-                        Open settings <ArrowUpRight size={13} />
+                        Providers <ArrowUpRight size={13} />
                       </button>
                     </div>
                   }
@@ -1168,7 +1274,8 @@ export default function Home() {
                         </div>
                         {message.attachments?.map((file) => (
                           <div className="attachment-chip" key={file.name}>
-                            <FileCode size={13} className="inline mr-1" /> {file.name}
+                            <FileCode size={13} className="inline mr-1" />{" "}
+                            {file.name}
                             <small>{(file.size / 1024).toFixed(1)} KB</small>
                           </div>
                         ))}
@@ -1233,7 +1340,11 @@ export default function Home() {
                         )}
                         {message.error && (
                           <div className="message-error">
-                            <AlertCircle size={14} className="inline mr-1 text-red-400" /> {message.error}
+                            <AlertCircle
+                              size={14}
+                              className="inline mr-1 text-red-400"
+                            />{" "}
+                            {message.error}
                             <button
                               disabled={busy}
                               onClick={() => {
@@ -1286,9 +1397,7 @@ export default function Home() {
                               <div className="artifact-actions">
                                 <button
                                   onClick={() =>
-                                    void navigator.clipboard.writeText(
-                                      message.artifact!.content,
-                                    )
+                                    void copyText(message.artifact!.content)
                                   }
                                 >
                                   Copy
@@ -1316,22 +1425,28 @@ export default function Home() {
                           <div className="validation-row">
                             {message.validation.syntaxValid ? (
                               <span className="validation-ok">
-                                <Check size={13} className="inline mr-1" /> Lua syntax valid
+                                <Check size={13} className="inline mr-1" /> Lua
+                                syntax valid
                               </span>
                             ) : (
                               <span className="validation-fail">
-                                <X size={13} className="inline mr-1" /> Lua syntax errors
+                                <X size={13} className="inline mr-1" /> Lua
+                                syntax errors
                               </span>
                             )}
                             <span className="validation-ok">
-                              <Check size={13} className="inline mr-1" /> {message.validation.recognized.length} GTPS APIs
+                              <Check size={13} className="inline mr-1" />{" "}
+                              {message.validation.recognized.length} GTPS APIs
                               checked
                             </span>
                             {message.validation.findings.filter(
                               (f) => f.severity === "warning",
                             ).length > 0 && (
                               <span className="validation-warn">
-                                <AlertTriangle size={13} className="inline mr-1" />
+                                <AlertTriangle
+                                  size={13}
+                                  className="inline mr-1"
+                                />
                                 {
                                   message.validation.findings.filter(
                                     (f) => f.severity === "warning",
@@ -1354,18 +1469,19 @@ export default function Home() {
                 <div className="composer-tools">
                   <div className="task-select">
                     <span className="task-dot" />
-                    <select
+                    <Select
+                      label="Task type"
+                      title="Choose task"
                       value={task}
-                      onChange={(e) => setTask(e.target.value as typeof task)}
-                      aria-label="Task type"
-                    >
-                      <option value="chat">Ask Tern</option>
-                      <option value="generate">Generate</option>
-                      <option value="fix">Fix Lua</option>
-                      <option value="review">Review</option>
-                      <option value="explain">Explain</option>
-                    </select>
-                    <ChevronDown size={14} />
+                      onChange={(value) => setTask(value as typeof task)}
+                      options={[
+                        { value: "chat", label: "Ask Tern" },
+                        { value: "generate", label: "Generate" },
+                        { value: "fix", label: "Fix Lua" },
+                        { value: "review", label: "Review" },
+                        { value: "explain", label: "Explain" },
+                      ]}
+                    />
                   </div>
                   <button
                     className="attach-button"
@@ -1379,7 +1495,9 @@ export default function Home() {
                     type="file"
                     multiple
                     accept=".lua,.txt,text/plain"
-                    hidden
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-label="Attach Lua or text files"
                     onChange={(e) => {
                       void addFiles(e.target.files);
                       e.target.value = "";
@@ -1394,7 +1512,8 @@ export default function Home() {
                   <div className="pending-files">
                     {files.map((file, i) => (
                       <span className="pending-file" key={file.name + i}>
-                        <FileCode size={13} className="inline mr-1" /> {file.name}
+                        <FileCode size={13} className="inline mr-1" />{" "}
+                        {file.name}
                         <button
                           onClick={() =>
                             setFiles((v) => v.filter((_, n) => n !== i))
@@ -1409,6 +1528,7 @@ export default function Home() {
                 )}
                 <form onSubmit={(e) => void send(e)}>
                   <textarea
+                    aria-label="Message Tern"
                     ref={composerRef}
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
@@ -1434,7 +1554,7 @@ export default function Home() {
                       <button
                         type="submit"
                         className="send-button"
-                        disabled={!draft.trim() && !files.length}
+                        disabled={!ready || (!draft.trim() && !files.length)}
                       >
                         Send <ArrowUp size={14} />
                       </button>
@@ -1450,15 +1570,6 @@ export default function Home() {
           </>
         )}
       </section>
-      {notice && (
-        <div className="toast" role="status">
-          <Info size={14} />
-          <span>{notice}</span>
-          <button onClick={() => setNotice("")} aria-label="Dismiss notice">
-            <X size={14} />
-          </button>
-        </div>
-      )}
     </main>
   );
 }

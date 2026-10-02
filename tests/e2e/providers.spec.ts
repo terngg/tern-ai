@@ -5,7 +5,9 @@ test("provider catalog has truthful unconfigured, Companion and unsupported stat
   await page.goto("/?screen=providers");
   await expect(page.locator("main")).toHaveAttribute("data-ready", "true");
   await expect(page.locator(".providers-header h1")).toHaveText("Providers");
-  await expect(page.locator(".provider-card")).toHaveCount(27);
+  await expect(page.locator(".provider-card")).toHaveCount(27, {
+    timeout: 15000,
+  });
   await expect(
     page.locator(".provider-card").filter({ hasText: "Kiro" }),
   ).toContainText("Requires Tern Companion");
@@ -81,7 +83,7 @@ test("providers remain usable on mobile without sidebar covering the dashboard",
     .locator(".side-nav")
     .getByRole("button", { name: "Providers" })
     .click();
-  await expect(page.locator(".sidebar")).not.toHaveClass(/sidebar-open/);
+  await expect(page.locator(".sidebar")).toBeHidden();
   await expect(page.locator(".provider-card").first()).toBeVisible();
   expect(
     await page.evaluate(

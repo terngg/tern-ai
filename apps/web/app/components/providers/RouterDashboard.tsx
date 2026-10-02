@@ -1,13 +1,7 @@
 "use client";
-import React, { useCallback, useEffect, useState } from "react";
-import {
-  Activity,
-  RefreshCw,
-  Search,
-  ShieldCheck,
-} from "lucide-react";
-import { providers, virtualModels } from "../../../lib/router/registry";
-import { canonicalSelection } from "../../../lib/router/model-selection";
+import React, { useCallback, useEffect, useState, useRef } from "react";
+import { Activity, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { providers } from "../../../lib/router/registry";
 import type {
   Connection,
   PoolConfig,
@@ -22,6 +16,10 @@ import { UsageView } from "../dashboard/UsageView";
 import { QuotaView } from "../dashboard/QuotaView";
 import { ProxyPoolsView } from "../dashboard/ProxyPoolsView";
 import { ModelsTable } from "../dashboard/ModelsTable";
+import { useUI } from "../ui/UIProvider";
+import { Form } from "../ui/Form";
+import { SecretInput } from "../ui/SecretInput";
+import { EmptyState } from "../ui/EmptyState";
 import { Button } from "../ui/Button";
 
 export type RouterScreen =
@@ -93,9 +91,12 @@ export function RouterDashboard({
 }: {
   screen?: RouterScreen;
 }) {
+  const { notify, askConfirm } = useUI();
+  const mutation = useRef(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("all");
@@ -103,6 +104,7 @@ export function RouterDashboard({
   const [register, setRegister] = useState(false);
 
   const reload = useCallback(async () => {
+    setRefreshing(true);
     try {
       setSnapshot(await api("/api/router"));
       setNotice("");
@@ -111,6 +113,7 @@ export function RouterDashboard({
       setSnapshot(null);
     } finally {
       setLoaded(true);
+      setRefreshing(false);
     }
   }, []);
 
@@ -119,6 +122,26 @@ export function RouterDashboard({
   }, [reload]);
 
   const act = async (body: unknown): Promise<boolean> => {
+    if (mutation.current) return false;
+    const action = (body as { action?: string; id?: string }).action;
+    const id = (body as { id?: string }).id;
+    if (action === "delete" || action === "deletePool") {
+      const name =
+        action === "delete"
+          ? snapshot?.connections.find((c) => c.id === id)?.label
+          : snapshot?.pools.find((p) => p.id === id)?.name;
+      if (
+        !(await askConfirm({
+          title:
+            action === "delete" ? "Delete connection?" : "Remove proxy pool?",
+          description: `${name || "This item"} will be removed from your account. This cannot be undone.`,
+          action: action === "delete" ? "Delete" : "Remove",
+          danger: true,
+        }))
+      )
+        return false;
+    }
+    mutation.current = true;
     setBusy(true);
     try {
       const result = await api("/api/router", body);
@@ -131,13 +154,43 @@ export function RouterDashboard({
           `${result.results.length} configured connections checked; ${failures} failed or cooling down.`,
         );
       }
+      if (result.results) {
+        const failures = result.results.filter(
+          (r: { ok: boolean }) => !r.ok,
+        ).length;
+        notify(
+          "Connection tests complete",
+          failures ? "warning" : "success",
+          `${result.results.length} tested · ${failures} failed or cooling down.`,
+        );
+      } else
+        notify(
+          action === "create"
+            ? "Encrypted connection saved"
+            : action === "delete"
+              ? "Connection removed"
+              : action === "deletePool"
+                ? "Proxy pool removed"
+                : action === "test"
+                  ? "Connection test successful"
+                  : action === "savePool"
+                    ? "Proxy pool saved"
+                    : "Connection updated",
+          "success",
+        );
       window.dispatchEvent(new Event("tern-router-changed"));
       return true;
     } catch (e) {
       await reload();
       setNotice(e instanceof Error ? e.message : "Operation failed.");
+      notify(
+        "Could not complete the action",
+        "error",
+        e instanceof Error ? e.message : "Try again.",
+      );
       return false;
     } finally {
+      mutation.current = false;
       setBusy(false);
     }
   };
@@ -179,11 +232,16 @@ export function RouterDashboard({
           <Button
             variant="secondary"
             size="sm"
-            disabled={busy}
-            icon={<RefreshCw size={13} className={busy ? "animate-spin" : ""} />}
+            disabled={busy || refreshing}
+            icon={
+              <RefreshCw
+                size={13}
+                className={refreshing ? "animate-spin" : ""}
+              />
+            }
             onClick={() => void reload()}
           >
-            Refresh
+            {refreshing ? "Refreshing…" : "Refresh"}
           </Button>
 
           {screen === "providers" && (
@@ -218,312 +276,372 @@ export function RouterDashboard({
         </div>
       )}
 
-      {/* Auth panel when not signed in */}
-      {!snapshot && loaded && (
-        <form
-          className="router-auth max-w-md mx-auto p-6 rounded-xl border border-border-subtle bg-surface space-y-4 shadow-sm"
-          onSubmit={async (e) => {
-            e.preventDefault();
-            const form = e.currentTarget;
-            const data = new FormData(form);
-            setBusy(true);
-            try {
-              await api("/api/auth", {
-                action: register ? "register" : "login",
-                email: data.get("email"),
-                password: data.get("password"),
-              });
-              form.reset();
-              await reload();
-              window.dispatchEvent(new Event("tern-router-changed"));
-            } catch (error) {
-              setNotice(
-                error instanceof Error ? error.message : "Sign-in failed.",
-              );
-            } finally {
-              setBusy(false);
-            }
-          }}
+      {!loaded ? (
+        <div
+          className="ui-loading-grid"
+          role="status"
+          aria-label="Loading router"
         >
-          <div className="text-center space-y-1">
-            <div className="size-10 mx-auto rounded-full bg-surface-2 flex items-center justify-center text-primary mb-2">
-              <ShieldCheck size={20} />
-            </div>
-            <h2 className="text-base font-semibold text-text-main">
-              {register ? "Create your Tern account" : "Sign in to Tern AI"}
-            </h2>
-            <p className="text-xs text-text-muted">
-              Provider credentials are encrypted and private to your account.
-            </p>
-          </div>
-
-          <label className="flex flex-col gap-1 text-xs text-text-muted">
-            Email
-            <input
-              name="email"
-              type="email"
-              autoComplete="username"
-              required
-              className="px-3 py-2 rounded-lg border border-border-subtle bg-bg text-text-main text-xs outline-none focus:border-primary"
-            />
-          </label>
-
-          <label className="flex flex-col gap-1 text-xs text-text-muted">
-            Password
-            <input
-              name="password"
-              type="password"
-              autoComplete={register ? "new-password" : "current-password"}
-              minLength={12}
-              maxLength={256}
-              required
-              className="px-3 py-2 rounded-lg border border-border-subtle bg-bg text-text-main text-xs outline-none focus:border-primary"
-            />
-          </label>
-
-          <div className="space-y-2 pt-2">
-            <Button
-              type="submit"
-              variant="primary"
-              size="md"
-              className="w-full"
-              disabled={busy}
+          <span className="sr-only">Loading your connections…</span>
+          {Array.from({ length: 6 }, (_, i) => (
+            <div className="ui-skeleton" key={i} />
+          ))}
+        </div>
+      ) : (
+        <>
+          {/* Auth panel when not signed in */}
+          {!snapshot && loaded && (
+            <Form
+              className="router-auth max-w-md mx-auto p-6 rounded-xl border border-border-subtle bg-surface space-y-4 shadow-sm"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const form = e.currentTarget;
+                const data = new FormData(form);
+                setBusy(true);
+                try {
+                  await api("/api/auth", {
+                    action: register ? "register" : "login",
+                    email: data.get("email"),
+                    password: data.get("password"),
+                  });
+                  form.reset();
+                  notify(register ? "Account created" : "Signed in", "success");
+                  await reload();
+                  window.dispatchEvent(new Event("tern-router-changed"));
+                } catch (error) {
+                  setNotice(
+                    error instanceof Error ? error.message : "Sign-in failed.",
+                  );
+                } finally {
+                  setBusy(false);
+                }
+              }}
             >
-              {register ? "Create account" : "Sign in"}
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="w-full text-xs"
-              onClick={() => setRegister(!register)}
-            >
-              {register ? "Use existing account" : "Create account"}
-            </Button>
-          </div>
-        </form>
-      )}
+              <div className="text-center space-y-1">
+                <div className="size-10 mx-auto rounded-full bg-surface-2 flex items-center justify-center text-primary mb-2">
+                  <ShieldCheck size={20} />
+                </div>
+                <h2 className="text-base font-semibold text-text-main">
+                  {register ? "Create your Tern account" : "Sign in to Tern AI"}
+                </h2>
+                <p className="text-xs text-text-muted">
+                  Provider credentials are encrypted and private to your
+                  account.
+                </p>
+              </div>
 
-      {/* Screen: Providers */}
-      {screen === "providers" && (
-        <div className="space-y-6">
-          {/* Summary bar */}
-          <div className="router-summary flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-border-subtle bg-surface text-xs text-text-muted">
-            <div className="flex items-center gap-3">
-              <span className="font-semibold text-text-main">
-                Routing Status
-              </span>
-              <span className="text-text-subtle font-mono">
-                {connections.length} connection{connections.length === 1 ? "" : "s"} configured
-              </span>
-            </div>
-            <span>
-              {pools.filter((p) => p.enabled).length} failover pool{pools.filter((p) => p.enabled).length === 1 ? "" : "s"} active
-            </span>
-          </div>
+              <label className="flex flex-col gap-1 text-xs text-text-muted">
+                Email
+                <input
+                  name="email"
+                  type="email"
+                  autoComplete="username"
+                  required
+                  className="px-3 py-2 rounded-lg border border-border-subtle bg-bg text-text-main text-xs outline-none focus:border-primary"
+                />
+              </label>
 
-          {/* Search and Category Filters */}
-          <div className="router-toolbar flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="router-search relative flex-1 max-w-sm">
-              <Search
-                size={14}
-                className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle"
-              />
-              <input
-                aria-label="Search providers"
-                placeholder="Search providers…"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-border-subtle bg-surface text-text-main text-xs outline-none focus:border-primary placeholder:text-text-muted"
-              />
-            </div>
+              <label className="flex flex-col gap-1 text-xs text-text-muted">
+                Password
+                <SecretInput
+                  name="password"
+                  type="password"
+                  autoComplete={register ? "new-password" : "current-password"}
+                  minLength={12}
+                  maxLength={256}
+                  required
+                  className="px-3 py-2 rounded-lg border border-border-subtle bg-bg text-text-main text-xs outline-none focus:border-primary"
+                />
+              </label>
 
-            <div className="router-filters flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-              {[
-                ["all", "All Providers"],
-                ["api_key", "API Keys"],
-                ["oauth", "OAuth / CLI"],
-                ["free", "Free"],
-                ["compatible", "Compatible"],
-                ["configured", "Configured"],
-              ].map(([id, label]) => (
-                <button
-                  key={id}
-                  type="button"
-                  className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
-                    category === id
-                      ? "bg-surface-2 text-text-main font-semibold shadow-sm border border-border-subtle"
-                      : "text-text-muted hover:text-text-main hover:bg-surface-2/50"
-                  }`}
-                  onClick={() => setCategory(id!)}
+              <div className="space-y-2 pt-2">
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  className="w-full"
+                  disabled={busy}
                 >
-                  {label}
-                </button>
-              ))}
-            </div>
-          </div>
+                  {register ? "Create account" : "Sign in"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs"
+                  onClick={() => setRegister(!register)}
+                >
+                  {register ? "Use existing account" : "Create account"}
+                </Button>
+              </div>
+            </Form>
+          )}
 
-          {/* Provider Groups */}
-          {(["oauth", "free", "api_key", "compatible", "local"] as const).map(
-            (group) => {
-              const items = providers.filter(
+          {/* Screen: Providers */}
+          {screen === "providers" && (
+            <div className="space-y-6">
+              {/* Summary bar */}
+              <div className="router-summary flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-border-subtle bg-surface text-xs text-text-muted">
+                <div className="flex items-center gap-3">
+                  <span className="font-semibold text-text-main">
+                    Routing Status
+                  </span>
+                  <span className="text-text-subtle font-mono">
+                    {connections.length} connection
+                    {connections.length === 1 ? "" : "s"} configured
+                  </span>
+                </div>
+                <span>
+                  {pools.filter((p) => p.enabled).length} failover pool
+                  {pools.filter((p) => p.enabled).length === 1 ? "" : "s"}{" "}
+                  active
+                </span>
+              </div>
+
+              {/* Search and Category Filters */}
+              <div className="router-toolbar flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="router-search relative flex-1 max-w-sm">
+                  <Search
+                    size={14}
+                    className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle"
+                  />
+                  <input
+                    aria-label="Search providers"
+                    placeholder="Search providers…"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-border-subtle bg-surface text-text-main text-xs outline-none focus:border-primary placeholder:text-text-muted"
+                  />
+                </div>
+
+                <div className="router-filters flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
+                  {[
+                    ["all", "All Providers"],
+                    ["api_key", "API Keys"],
+                    ["oauth", "OAuth / CLI"],
+                    ["free", "Free"],
+                    ["compatible", "Compatible"],
+                    ["configured", "Configured"],
+                  ].map(([id, label]) => (
+                    <button
+                      key={id}
+                      type="button"
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
+                        category === id
+                          ? "bg-surface-2 text-text-main font-semibold shadow-sm border border-border-subtle"
+                          : "text-text-muted hover:text-text-main hover:bg-surface-2/50"
+                      }`}
+                      aria-pressed={category === id}
+                      onClick={() => setCategory(id!)}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {!providers.some(
                 (p) =>
-                  p.category === group &&
                   (category === "all" ||
-                    category === group ||
+                    p.category === category ||
                     (category === "configured" &&
                       connections.some((c) => c.provider === p.id))) &&
                   p.name.toLowerCase().includes(search.toLowerCase()),
-              );
+              ) && (
+                <EmptyState
+                  title="No matching providers"
+                  description="Try a different search or browse all providers."
+                  action={
+                    <Button
+                      onClick={() => {
+                        setSearch("");
+                        setCategory("all");
+                      }}
+                    >
+                      Clear filters
+                    </Button>
+                  }
+                />
+              )}
+              {/* Provider Groups */}
+              {(
+                ["oauth", "free", "api_key", "compatible", "local"] as const
+              ).map((group) => {
+                const items = providers.filter(
+                  (p) =>
+                    p.category === group &&
+                    (category === "all" ||
+                      category === group ||
+                      (category === "configured" &&
+                        connections.some((c) => c.provider === p.id))) &&
+                    p.name.toLowerCase().includes(search.toLowerCase()),
+                );
 
-              if (items.length === 0) return null;
+                if (items.length === 0) return null;
 
-              const groupLabels = {
-                oauth: "OAuth Providers",
-                free: "Free Providers",
-                api_key: "API Key Providers",
-                compatible: "Compatible Providers",
-                local: "Local Providers",
-              };
+                const groupLabels = {
+                  oauth: "OAuth Providers",
+                  free: "Free Providers",
+                  api_key: "API Key Providers",
+                  compatible: "Compatible Providers",
+                  local: "Local Providers",
+                };
 
-              return (
-                <section
-                  className="router-group space-y-3"
-                  id={"section-" + group}
-                  key={group}
-                >
-                  <div className="flex items-center justify-between">
-                    <h2 className="text-sm font-semibold text-text-main flex items-center gap-2">
-                      {groupLabels[group]}
-                      <span className="text-xs text-text-muted font-normal">
-                        ({items.length})
-                      </span>
-                    </h2>
-                  </div>
+                return (
+                  <section
+                    className="router-group space-y-3"
+                    id={"section-" + group}
+                    key={group}
+                  >
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-sm font-semibold text-text-main flex items-center gap-2">
+                        {groupLabels[group]}
+                        <span className="text-xs text-text-muted font-normal">
+                          ({items.length})
+                        </span>
+                      </h2>
+                    </div>
 
-                  <div className="router-card-grid grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                    {items.map((p) => (
-                      <ProviderCard
-                        key={p.id}
-                        provider={p}
-                        connections={connections}
-                        onClick={() => setSelected(p)}
-                        onToggle={async (enabled) => {
-                          const accounts = connections.filter(
-                            (c) => c.provider === p.id,
-                          );
-                          for (const c of accounts) {
-                            await act({
-                              action: "update",
-                              id: c.id,
-                              enabled,
-                            });
-                          }
-                        }}
-                      />
-                    ))}
-                  </div>
-                </section>
-              );
-            },
+                    <div className="router-card-grid grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                      {items.map((p) => (
+                        <ProviderCard
+                          key={p.id}
+                          provider={p}
+                          busy={busy}
+                          connections={connections}
+                          onClick={() => setSelected(p)}
+                          onToggle={async (enabled) => {
+                            const accounts = connections.filter(
+                              (c) => c.provider === p.id,
+                            );
+                            for (const c of accounts) {
+                              await act({
+                                action: "update",
+                                id: c.id,
+                                enabled,
+                              });
+                            }
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
           )}
-        </div>
+
+          {/* Screen: Pools */}
+          {screen === "pools" && (
+            <ProxyPoolsView
+              pools={pools}
+              connections={connections}
+              busy={busy}
+              onAct={act}
+            />
+          )}
+
+          {/* Screen: Routing */}
+          {screen === "routing" && (
+            <div className="space-y-6">
+              <div className="router-panel p-5 rounded-xl border border-border-subtle bg-surface space-y-2">
+                <h2 className="text-sm font-semibold text-text-main">
+                  Routing Policy & Engine
+                </h2>
+                <p className="text-xs text-text-muted leading-relaxed">
+                  Auto / Balanced rotates eligible accounts. Fast prefers
+                  healthy accounts and measured latency. Quality uses your
+                  priority order. Cheap requires recent, provider-reported
+                  prices. Fallback is limited to four accounts and stops after
+                  partial output.
+                </p>
+                <p className="text-xs text-text-subtle">
+                  Unconfigured models, disabled accounts, authentication
+                  failures, exhausted quota and active cooldowns are excluded
+                  from candidate selection.
+                </p>
+              </div>
+
+              <RoutingGraph connections={connections} pools={pools} />
+            </div>
+          )}
+
+          {/* Screen: Models */}
+          {screen === "models" && <ModelsTable connections={connections} />}
+
+          {/* Screen: Usage */}
+          {screen === "usage" && (
+            <UsageView traces={traces} connections={connections} />
+          )}
+
+          {/* Screen: Quota */}
+          {screen === "quota" && <QuotaView connections={connections} />}
+
+          {/* Screen: Requests */}
+          {screen === "requests" && (
+            <div className="space-y-4">
+              <div className="p-4 rounded-xl border border-border-subtle bg-surface">
+                <h3 className="text-sm font-semibold text-text-main">
+                  Request Inspector
+                </h3>
+                <p className="text-xs text-text-muted mt-0.5">
+                  Inspect actual routes, retries, latency, TTFT, and token usage
+                  from AI inference invocations.
+                </p>
+              </div>
+              <RequestsTable traces={traces} connections={connections} />
+            </div>
+          )}
+
+          {/* Screen: Settings */}
+          {screen === "settings" && snapshot && (
+            <article className="router-panel p-6 rounded-xl border border-border-subtle bg-surface space-y-4">
+              <div className="space-y-1">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
+                  Signed in account
+                </span>
+                <h2 className="text-base font-semibold text-text-main">
+                  {snapshot.user.email}
+                </h2>
+                <p className="text-xs text-text-muted leading-relaxed">
+                  Your credentials are encrypted on the server. Chat history and
+                  attachments remain on this browser. Signing out prevents
+                  access to stored provider connections; it does not erase
+                  browser chat history.
+                </p>
+              </div>
+
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={async () => {
+                  if (mutation.current) return;
+                  mutation.current = true;
+                  setBusy(true);
+                  try {
+                    await api("/api/auth", undefined, "DELETE");
+                    await reload();
+                    notify("Signed out", "success");
+                    window.dispatchEvent(new Event("tern-router-changed"));
+                  } catch {
+                    notify(
+                      "Could not sign out",
+                      "error",
+                      "Check your connection and try again.",
+                    );
+                  } finally {
+                    mutation.current = false;
+                    setBusy(false);
+                  }
+                }}
+              >
+                Sign out
+              </Button>
+            </article>
+          )}
+        </>
       )}
-
-      {/* Screen: Pools */}
-      {screen === "pools" && (
-        <ProxyPoolsView
-          pools={pools}
-          connections={connections}
-          busy={busy}
-          onAct={act}
-        />
-      )}
-
-      {/* Screen: Routing */}
-      {screen === "routing" && (
-        <div className="space-y-6">
-          <div className="router-panel p-5 rounded-xl border border-border-subtle bg-surface space-y-2">
-            <h2 className="text-sm font-semibold text-text-main">
-              Routing Policy & Engine
-            </h2>
-            <p className="text-xs text-text-muted leading-relaxed">
-              Auto / Balanced rotates eligible accounts. Fast prefers healthy
-              accounts and measured latency. Quality uses your priority order.
-              Cheap requires recent, provider-reported prices. Fallback is
-              limited to four accounts and stops after partial output.
-            </p>
-            <p className="text-xs text-text-subtle">
-              Unconfigured models, disabled accounts, authentication failures,
-              exhausted quota and active cooldowns are excluded from candidate
-              selection.
-            </p>
-          </div>
-
-          <RoutingGraph connections={connections} pools={pools} />
-        </div>
-      )}
-
-      {/* Screen: Models */}
-      {screen === "models" && <ModelsTable connections={connections} />}
-
-      {/* Screen: Usage */}
-      {screen === "usage" && (
-        <UsageView traces={traces} connections={connections} />
-      )}
-
-      {/* Screen: Quota */}
-      {screen === "quota" && <QuotaView connections={connections} />}
-
-      {/* Screen: Requests */}
-      {screen === "requests" && (
-        <div className="space-y-4">
-          <div className="p-4 rounded-xl border border-border-subtle bg-surface">
-            <h3 className="text-sm font-semibold text-text-main">
-              Request Inspector
-            </h3>
-            <p className="text-xs text-text-muted mt-0.5">
-              Inspect actual routes, retries, latency, TTFT, and token usage from
-              AI inference invocations.
-            </p>
-          </div>
-          <RequestsTable traces={traces} connections={connections} />
-        </div>
-      )}
-
-      {/* Screen: Settings */}
-      {screen === "settings" && snapshot && (
-        <article className="router-panel p-6 rounded-xl border border-border-subtle bg-surface space-y-4">
-          <div className="space-y-1">
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-text-muted">
-              Signed in account
-            </span>
-            <h2 className="text-base font-semibold text-text-main">
-              {snapshot.user.email}
-            </h2>
-            <p className="text-xs text-text-muted leading-relaxed">
-              Your credentials are encrypted on the server. Chat history and
-              attachments remain on this browser. Signing out prevents access to
-              stored provider connections; it does not erase browser chat
-              history.
-            </p>
-          </div>
-
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            onClick={async () => {
-              await api("/api/auth", undefined, "DELETE");
-              await reload();
-              window.dispatchEvent(new Event("tern-router-changed"));
-            }}
-          >
-            Sign out
-          </Button>
-        </article>
-      )}
-
       {/* Provider Details Drawer */}
       <ProviderDrawer
         provider={selected}
@@ -533,113 +651,6 @@ export function RouterDashboard({
         onClose={() => setSelected(null)}
         onAct={act}
       />
-    </section>
-  );
-}
-
-export function RouterSelector({
-  model, pool, provider, onChange,
-}: {
-  model: string;
-  pool: string;
-  provider: string;
-  onChange: (model: string, pool: string, provider: string) => void;
-}) {
-  const [data, setData] = useState<Snapshot | null>(null);
-  const [loaded, setLoaded] = useState(false);
-
-  useEffect(() => {
-    const load = () => {
-      void api("/api/router")
-        .then(setData)
-        .catch(() => setData(null))
-        .finally(() => setLoaded(true));
-    };
-    load();
-    window.addEventListener("tern-router-changed", load);
-    window.addEventListener("focus", load);
-    return () => {
-      window.removeEventListener("tern-router-changed", load);
-      window.removeEventListener("focus", load);
-    };
-  }, []);
-
-  const selectedPool = data?.pools.find((p) => p.id === pool && p.enabled);
-  const accounts = (data?.connections || []).filter((c) =>
-    c.enabled && (!pool || selectedPool?.connections.includes(c.id)),
-  );
-  const catalog = accounts.map((c) => ({
-    connection: c,
-    models: [...new Map<string, { id: string; name: string }>([
-      ...(c.model ? [[c.model, { id: c.model, name: c.model }] as const] : []),
-      ...c.models.map((m) => [m.id, m] as const),
-    ]).values()],
-  }));
-  const automatic = virtualModels.includes(model);
-  const selectedModel = canonicalSelection(model, accounts);
-  const modelAvailable = automatic || catalog.some(({ connection, models }) =>
-    models.some((m) => `${connection.id}::${m.id}` === selectedModel),
-  );
-  const providerIds = [...new Set(accounts.filter((c) => c.model).map((c) => c.provider))];
-  const providerName = (id: string) => providers.find((p) => p.id === id)?.name || id;
-  const modes: Record<string, string> = {
-    auto: "Auto · balanced", "auto/balanced": "Auto · balanced",
-    "auto/fast": "Auto · fastest measured", "auto/cheap": "Auto · lowest known cost",
-    "auto/quality": "Auto · account priority",
-  };
-
-  return (
-    <section className="chat-routing" aria-label="Chat routing">
-      <div className="chat-routing-controls">
-        <label>
-          <span>Model</span>
-          <select aria-label="Routing model" value={selectedModel}
-            onChange={(e) => onChange(e.target.value, pool, provider)}>
-            <optgroup label="Automatic routing">
-              {virtualModels.map((m) => <option value={m} key={m}>{modes[m] || m}</option>)}
-            </optgroup>
-            {!modelAvailable && <option value={model} disabled>Selected model unavailable</option>}
-            {catalog.filter(({ models }) => models.length).map(({ connection: c, models }) => (
-              <optgroup key={c.id} label={`${providerName(c.provider)} · ${c.label} · ${connectionStatus(c)}`}>
-                {models.map((m) => (
-                  <option key={m.id} value={`${c.id}::${m.id}`}>
-                    {providerName(c.provider)} / {m.name === m.id ? m.id : `${m.name} (${m.id})`}
-                  </option>
-                ))}
-              </optgroup>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span>Try provider first</span>
-          <select aria-label="Preferred provider" value={automatic ? provider : ""}
-            disabled={!automatic}
-            onChange={(e) => onChange(model, pool, e.target.value)}>
-            <option value="">{automatic ? "Automatic order" : "Fixed by selected model"}</option>
-            {provider && !providerIds.includes(provider) && <option value={provider} disabled>Selected provider unavailable</option>}
-            {providerIds.map((id) => <option key={id} value={id}>{providerName(id)}</option>)}
-          </select>
-        </label>
-        <label>
-          <span>Account pool</span>
-          <select aria-label="Routing pool" value={pool}
-            onChange={(e) => onChange("auto", e.target.value, "")}>
-            <option value="">All my accounts</option>
-            {pool && !selectedPool && <option value={pool} disabled>Selected pool unavailable</option>}
-            {data?.pools.filter((p) => p.enabled).map((p) => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
-        </label>
-      </div>
-      <p className="chat-routing-hint">
-        {!loaded ? "Loading your connections…" : !data
-          ? "Sign in in Providers to choose your connected models."
-          : !accounts.length ? "Add an enabled connection in Providers to choose a model."
-          : !automatic ? "Uses this exact model and account. Select Auto to allow provider fallback."
-          : provider ? `${providerName(provider)} is tried first when eligible, then other accounts in this pool. Uses each account’s default model.`
-          : "Auto uses each account’s default model and the selected routing strategy."}
-      </p>
     </section>
   );
 }

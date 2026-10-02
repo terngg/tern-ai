@@ -1,3 +1,4 @@
+import { pick } from "./ui-helpers.js";
 import { test, expect, type Page } from "@playwright/test";
 const mockKey = "AIzaSyMockOnlyCredential0123456789ABCDEF";
 const code =
@@ -89,9 +90,7 @@ test("Router chat streams, keeps artifacts/context on reload, uploads and downlo
     });
   });
   expect(stored).not.toContain(mockKey);
-  await page
-    .getByRole("combobox", { name: "Routing model", exact: true })
-    .selectOption("auto/fast");
+  await pick(page, "Routing model", "auto/fast");
   await page.locator(".composer-tools input[type=file]").setInputFiles({
     name: "bank.lua",
     mimeType: "text/plain",
@@ -168,10 +167,9 @@ test("local API explorer exposes the bundled 485 entries and mobile layout works
   await page.locator(".mobile-menu").click();
   await page.getByRole("button", { name: "GTPS API", exact: false }).click();
   await expect(page.locator(".entry-count")).toHaveText("485 entries");
-  await page.locator(".mobile-close").click();
   await page.getByPlaceholder("Search 485 APIs…").fill("giveItem");
   await expect(page.locator(".api-results")).toContainText("giveItem");
-  await expect(page.locator(".sidebar")).not.toHaveClass(/sidebar-open/);
+  await expect(page.locator(".sidebar")).toBeHidden();
   await page.waitForTimeout(300);
   await page.screenshot({
     path: "test-results/tern-web-mobile.png",

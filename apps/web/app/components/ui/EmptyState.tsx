@@ -23,7 +23,22 @@ export function EmptyState({
         <h3 className="text-sm font-semibold text-text-main mb-1">{title}</h3>
       )}
       <p className="text-xs text-text-muted max-w-sm mb-4">{description}</p>
-      {action && <div>{action}</div>}
+      <div>
+        {action || (
+          <a
+            className="ui-button ui-button-secondary"
+            href={
+              /request|usage|activity/i.test(title || "")
+                ? "/?screen=chat"
+                : "/?screen=providers"
+            }
+          >
+            {/request|usage|activity/i.test(title || "")
+              ? "Open chat"
+              : "Configure providers"}
+          </a>
+        )}
+      </div>
     </div>
   );
 }

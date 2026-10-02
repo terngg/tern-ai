@@ -1,0 +1,146 @@
+/* Tern AI design tokens. Legacy aliases keep existing screens on one palette. */
+:root {
+  --bg: #171817;
+  --panel: #202220;
+  --panel-2: #282b28;
+  --panel-3: #323632;
+  --line: #343834;
+  --line-strong: #4b514b;
+  --text: #eff1ed;
+  --muted: #a9b0a7;
+  --subtle: #90998e;
+  --accent: #e88365;
+  --accent-ink: #191918;
+  --green: #83c9a0;
+  --amber: #dfbb77;
+  --red: #ef9393;
+  --blue: #94b8e9;
+  --surface: var(--panel);
+  --surface-raised: var(--panel-2);
+  --border: var(--line);
+  --text-primary: var(--text);
+  --text-secondary: var(--muted);
+  --text-muted: var(--subtle);
+  --success: var(--green);
+  --warning: var(--amber);
+  --danger: var(--red);
+  --focus: var(--accent);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --z-base: 0;
+  --z-sticky: 10;
+  --z-drawer: 30;
+  --z-overlay: 50;
+  --z-toast: 70;
+  --duration: 180ms;
+  --shadow-elev: 0 20px 70px #0007;
+  --color-bg: var(--bg);
+  --color-surface: var(--panel);
+  --color-surface-2: var(--panel-2);
+  --color-surface-3: var(--panel-3);
+  --color-border: var(--line);
+  --color-border-subtle: var(--line);
+  --color-primary: var(--accent);
+  --color-primary-hover: color-mix(in srgb, var(--accent), white 10%);
+  --color-text-main: var(--text);
+  --color-text-muted: var(--muted);
+  --color-text-subtle: var(--subtle);
+}
+:root[data-theme="light"] {
+  --bg: #f5f5f1;
+  --panel: #fff;
+  --panel-2: #eeefeb;
+  --panel-3: #e3e6de;
+  --line: #d8ddd4;
+  --line-strong: #a5b09f;
+  --text: #252b22;
+  --muted: #586152;
+  --subtle: #697361;
+  --accent: #a9472d;
+  --accent-ink: #fff;
+  --green: #277045;
+  --amber: #855809;
+  --red: #b33434;
+  --blue: #345f9a;
+}
+@media (prefers-color-scheme: light) {
+  :root[data-theme="system"] {
+    --bg: #f5f5f1;
+    --panel: #fff;
+    --panel-2: #eeefeb;
+    --panel-3: #e3e6de;
+    --line: #d8ddd4;
+    --line-strong: #a5b09f;
+    --text: #252b22;
+    --muted: #586152;
+    --subtle: #697361;
+    --accent: #a9472d;
+    --accent-ink: #fff;
+    --green: #277045;
+    --amber: #855809;
+    --red: #b33434;
+    --blue: #345f9a;
+  }
+}
+html {
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--line-strong);
+  border-radius: 8px;
+}
+:where(button, a, input, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+.sr-only {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  padding: 0 !important;
+  margin: -1px !important;
+  overflow: hidden !important;
+  clip: rect(0, 0, 0, 0) !important;
+  white-space: nowrap !important;
+  border: 0 !important;
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+:root[data-theme] {
+  --color-bg: var(--bg);
+  --color-surface: var(--panel);
+  --color-surface-2: var(--panel-2);
+  --color-surface-3: var(--panel-3);
+  --color-border: var(--line);
+  --color-border-subtle: var(--line);
+  --color-primary: var(--accent);
+  --color-primary-hover: color-mix(in srgb, var(--accent), white 10%);
+  --color-text-main: var(--text);
+  --color-text-muted: var(--muted);
+  --color-text-subtle: var(--subtle);
+}

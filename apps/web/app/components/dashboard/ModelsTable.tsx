@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import type { Connection } from "../../../lib/router/types";
 import { Badge } from "../ui/Badge";
 import { EmptyState } from "../ui/EmptyState";
@@ -9,6 +9,7 @@ interface ModelsTableProps {
 }
 
 export function ModelsTable({ connections }: ModelsTableProps) {
+  const [search, setSearch] = useState("");
   const allModels = connections.flatMap((c) =>
     c.models.map((m) => ({
       ...m,
@@ -18,6 +19,12 @@ export function ModelsTable({ connections }: ModelsTableProps) {
       connectionEnabled: c.enabled,
       isSelected: m.id === c.model,
     })),
+  );
+
+  const filtered = allModels.filter((m) =>
+    `${m.id} ${m.name} ${m.provider} ${m.connectionLabel}`
+      .toLowerCase()
+      .includes(search.toLowerCase()),
   );
 
   return (
@@ -39,6 +46,28 @@ export function ModelsTable({ connections }: ModelsTableProps) {
         )}
       </div>
 
+      {!!allModels.length && (
+        <label className="ui-field">
+          Search models
+          <input
+            type="search"
+            placeholder="Model, provider or account…"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+      )}
+      {!!allModels.length && !filtered.length && (
+        <EmptyState
+          title="No matching models"
+          description="Try a different model ID, provider, or account name."
+          action={
+            <button className="ui-button" onClick={() => setSearch("")}>
+              Clear search
+            </button>
+          }
+        />
+      )}
       {!allModels.length ? (
         <EmptyState
           title="No models discovered"
@@ -47,23 +76,31 @@ export function ModelsTable({ connections }: ModelsTableProps) {
       ) : (
         <div className="rounded-xl border border-border-subtle bg-surface overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table
+              className="ui-data-table w-full text-left text-xs"
+              aria-label="Discovered models"
+            >
               <thead className="bg-surface-2/60 border-b border-border-subtle text-text-muted font-medium">
                 <tr>
                   <th className="py-2.5 px-4 font-medium">Model ID</th>
-                  <th className="py-2.5 px-4 font-medium">Account / Provider</th>
+                  <th className="py-2.5 px-4 font-medium">
+                    Account / Provider
+                  </th>
                   <th className="py-2.5 px-4 font-medium">Source / Status</th>
                   <th className="py-2.5 px-4 font-medium">Context Window</th>
                   <th className="py-2.5 px-4 font-medium">USD / 1M Tokens</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border-subtle">
-                {allModels.map((m) => (
+                {filtered.map((m) => (
                   <tr
                     key={`${m.connectionId}-${m.id}`}
                     className="hover:bg-surface-2/40 transition-colors"
                   >
-                    <td className="py-3 px-4 font-mono text-xs">
+                    <td
+                      data-label="Model"
+                      className="py-3 px-4 font-mono text-xs"
+                    >
                       <div className="flex items-center gap-2">
                         <span className="font-semibold text-text-main">
                           {m.id}
@@ -81,7 +118,7 @@ export function ModelsTable({ connections }: ModelsTableProps) {
                       )}
                     </td>
 
-                    <td className="py-3 px-4">
+                    <td data-label="Account / Provider" className="py-3 px-4">
                       <div className="text-text-main font-medium">
                         {m.connectionLabel}
                       </div>
@@ -96,13 +133,13 @@ export function ModelsTable({ connections }: ModelsTableProps) {
                       </div>
                     </td>
 
-                    <td className="py-3 px-4">
+                    <td data-label="Source / Status" className="py-3 px-4">
                       <div className="flex items-center gap-1.5">
                         <Badge
                           variant={m.connectionEnabled ? "success" : "default"}
                           size="sm"
                         >
-                          {m.connectionEnabled ? "Active" : "Disabled"}
+                          {m.connectionEnabled ? "Enabled" : "Disabled"}
                         </Badge>
                         <span className="text-text-muted text-[11px]">
                           {m.source}
@@ -110,14 +147,22 @@ export function ModelsTable({ connections }: ModelsTableProps) {
                       </div>
                     </td>
 
-                    <td className="py-3 px-4 font-mono text-[11px] text-text-muted">
-                      {m.contextWindow ? m.contextWindow.toLocaleString() : "Unknown"}
+                    <td
+                      data-label="Context window"
+                      className="py-3 px-4 font-mono text-[11px] text-text-muted"
+                    >
+                      {m.contextWindow
+                        ? m.contextWindow.toLocaleString()
+                        : "Unknown"}
                     </td>
 
-                    <td className="py-3 px-4 font-mono text-[11px] text-text-muted">
+                    <td
+                      data-label="USD / 1M tokens"
+                      className="py-3 px-4 font-mono text-[11px] text-text-muted"
+                    >
                       {m.inputPrice === undefined
                         ? "Unknown"
-                        : `${m.inputPrice} in / ${m.outputPrice ?? "Unknown"} out`}
+                        : `${(m.inputPrice * 1_000_000).toLocaleString()} in / ${m.outputPrice === undefined ? "Unknown" : (m.outputPrice * 1_000_000).toLocaleString()} out`}
                     </td>
                   </tr>
                 ))}

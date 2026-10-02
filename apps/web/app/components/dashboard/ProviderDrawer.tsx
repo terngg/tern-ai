@@ -6,11 +6,18 @@ import {
   Server,
   Trash2,
   Copy,
-  Check,
   Laptop,
   RefreshCw,
 } from "lucide-react";
-import type { Connection, ProviderDefinition, CompanionStatus } from "../../../lib/router/types";
+import type {
+  Connection,
+  ProviderDefinition,
+  CompanionStatus,
+} from "../../../lib/router/types";
+import { Select } from "../ui/Select";
+import { SecretInput } from "../ui/SecretInput";
+import { Form } from "../ui/Form";
+import { useUI } from "../ui/UIProvider";
 import { Drawer } from "../ui/Drawer";
 import { Badge } from "../ui/Badge";
 import { Button } from "../ui/Button";
@@ -70,7 +77,8 @@ export function ProviderDrawer({
       subtitle="Provider Connections"
       width="lg"
     >
-      {provider.adapterStatus === "requires_companion" || provider.auth === "local_companion" ? (
+      {provider.adapterStatus === "requires_companion" ||
+      provider.auth === "local_companion" ? (
         <CompanionSection
           provider={provider}
           connections={providerConnections}
@@ -87,7 +95,8 @@ export function ProviderDrawer({
             Unsupported
           </h3>
           <p className="text-xs text-text-muted max-w-md">
-            Custom REST requires an explicit request and response mapping. No adapter is available yet.
+            Custom REST requires an explicit request and response mapping. No
+            adapter is available yet.
           </p>
         </div>
       ) : (
@@ -128,11 +137,7 @@ export function ProviderDrawer({
 
           {/* Add Connection Form */}
           {signedIn ? (
-            <AddConnectionForm
-              provider={provider}
-              busy={busy}
-              onSave={onAct}
-            />
+            <AddConnectionForm provider={provider} busy={busy} onSave={onAct} />
           ) : (
             <div className="p-4 rounded-xl border border-border-subtle bg-surface-2/30 text-xs text-text-muted text-center">
               Sign in to Tern AI to add encrypted connections.
@@ -200,7 +205,7 @@ function ConnectionItem({
         )}
       </div>
 
-      <form
+      <Form
         className="space-y-3 pt-2 border-t border-border-subtle/50 text-xs"
         onSubmit={async (e) => {
           e.preventDefault();
@@ -239,30 +244,29 @@ function ConnectionItem({
 
         <label className="flex flex-col gap-1 text-text-muted">
           Selected Chat Model
-          <input
+          <Select
+            label={`Model for ${c.label}`}
+            title="Select connection model"
             name="model"
-            list={"models-" + c.id}
             defaultValue={c.model}
-            required
-            placeholder="e.g. gpt-4o, claude-3-5-sonnet, gemini-2.0-flash"
-            className="px-2.5 py-1.5 rounded-lg border border-border-subtle bg-bg text-text-main text-xs outline-none focus:border-primary"
+            searchable
+            allowCustom
+            searchPlaceholder="Search or enter model ID…"
+            options={[
+              ...(!c.models.some((m) => m.id === c.model) && c.model
+                ? [{ value: c.model, label: c.model }]
+                : []),
+              ...c.models.map((m) => ({
+                value: m.id,
+                label: m.name,
+                description: m.id,
+              })),
+            ]}
           />
-          <datalist id={"models-" + c.id}>
-            {c.models.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-              </option>
-            ))}
-          </datalist>
         </label>
 
         <div className="flex items-center justify-between pt-1 gap-2 flex-wrap">
-          <Button
-            type="submit"
-            size="xs"
-            variant="secondary"
-            disabled={busy}
-          >
+          <Button type="submit" size="xs" variant="secondary" disabled={busy}>
             Save changes
           </Button>
 
@@ -299,7 +303,7 @@ function ConnectionItem({
             </Button>
           </div>
         </div>
-      </form>
+      </Form>
     </div>
   );
 }
@@ -314,22 +318,23 @@ function AddConnectionForm({
   onSave: (body: unknown) => Promise<boolean>;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const [formError, setFormError] = useState("");
 
   return (
-    <form
+    <Form
       ref={formRef}
       className="p-4 rounded-xl border border-border-subtle bg-surface space-y-3 text-xs"
       onSubmit={async (e) => {
         e.preventDefault();
+        setFormError("");
         const form = e.currentTarget;
         const d = new FormData(form);
         let headers: unknown = {};
         try {
           headers = JSON.parse(String(d.get("headers") || "{}"));
         } catch {
-          form
-            .querySelector<HTMLTextAreaElement>("[name=headers]")
-            ?.setCustomValidity("Enter valid JSON.");
+          setFormError("Custom headers must contain valid JSON.");
+          form.querySelector<HTMLTextAreaElement>("[name=headers]")?.focus();
           return;
         }
 
@@ -379,7 +384,7 @@ function AddConnectionForm({
 
         <label className="flex flex-col gap-1 text-text-muted">
           API key
-          <input
+          <SecretInput
             name="key"
             type="password"
             autoComplete="off"
@@ -462,6 +467,11 @@ function AddConnectionForm({
         </div>
       )}
 
+      {formError && (
+        <p role="alert" className="ui-field-error">
+          {formError}
+        </p>
+      )}
       <div className="flex items-center justify-between pt-2">
         <label className="inline-flex items-center gap-2 cursor-pointer text-text-muted select-none">
           <input
@@ -483,7 +493,7 @@ function AddConnectionForm({
           Save encrypted connection
         </Button>
       </div>
-    </form>
+    </Form>
   );
 }
 
@@ -500,23 +510,31 @@ function CompanionSection({
   busy: boolean;
   onAct: (body: unknown) => Promise<boolean>;
 }) {
+  const { notify, copyText } = useUI();
   const [status, setStatus] = useState<CompanionStatus | null>(null);
   const [loading, setLoading] = useState(false);
-  const [pairCode, setPairCode] = useState<{ code: string; expiresAt: number } | null>(null);
+  const [pairCode, setPairCode] = useState<{
+    code: string;
+    expiresAt: number;
+  } | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [copied, setCopied] = useState(false);
+  const [statusError, setStatusError] = useState("");
 
   const fetchStatus = useCallback(async () => {
     if (!signedIn) return;
     try {
       setLoading(true);
       const res = await fetch("/api/router/companion", { cache: "no-store" });
+      if (!res.ok) throw new Error("Companion status unavailable");
       if (res.ok) {
+        setStatusError("");
         const data = (await res.json()) as CompanionStatus;
         setStatus(data);
       }
     } catch {
-      /* ignore */
+      setStatusError(
+        "Could not load Companion status. Check your connection and try again.",
+      );
     } finally {
       setLoading(false);
     }
@@ -538,27 +556,42 @@ function CompanionSection({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "pair-code" }),
       });
+      if (!res.ok) throw new Error("Pairing code unavailable");
       if (res.ok) {
         const data = (await res.json()) as { code: string; expiresAt: number };
         setPairCode(data);
       }
     } catch {
-      /* ignore */
+      notify(
+        "Could not create a pairing code",
+        "error",
+        "Check your connection and try again.",
+      );
     } finally {
       setGenerating(false);
     }
   };
 
   const handleCopy = (text: string) => {
-    void navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    void copyText(text);
   };
 
-  const detected = status?.detectedProviders?.find((dp) => dp.id === provider.id);
+  const detected = status?.detectedProviders?.find(
+    (dp) => dp.id === provider.id,
+  );
 
   return (
     <div className="space-y-5">
+      {statusError && (
+        <p role="alert" className="ui-field-error">
+          {statusError}
+        </p>
+      )}
+      {loading && !status && (
+        <p role="status" className="text-xs text-text-muted">
+          Loading Companion status…
+        </p>
+      )}
       {/* Header card with Requires Tern Companion heading to preserve test invariants */}
       <div className="p-4 rounded-xl border border-border-subtle bg-surface-2/40 text-center flex flex-col items-center">
         <div className="size-10 rounded-full bg-surface-3 flex items-center justify-center text-text-muted mb-3">
@@ -568,14 +601,16 @@ function CompanionSection({
           Requires Tern Companion
         </h3>
         <p className="text-xs text-text-muted max-w-md">
-          {provider.name} runs directly on your local workstation through Tern Companion.
-          Local credentials and session keys remain isolated on your machine and are never transmitted to the cloud.
+          {provider.name} runs directly on your local workstation through Tern
+          Companion. Local credentials and session keys remain isolated on your
+          machine and are never transmitted to the cloud.
         </p>
       </div>
 
       {!signedIn ? (
         <div className="p-4 rounded-xl border border-border-subtle bg-surface-2/30 text-xs text-text-muted text-center">
-          Sign in to Tern AI to pair your workstation and manage local providers.
+          Sign in to Tern AI to pair your workstation and manage local
+          providers.
         </div>
       ) : !status?.paired ? (
         <div className="p-4 rounded-xl border border-border-subtle bg-surface space-y-4">
@@ -600,10 +635,17 @@ function CompanionSection({
               </span>
               <div className="space-y-2">
                 <div className="p-2.5 rounded-lg bg-bg border border-border-subtle font-mono text-[11px] text-text-main select-all flex items-center justify-between">
-                  <code>curl -fsSL https://tern-ai-swart.vercel.app/install.sh | bash</code>
+                  <code>
+                    curl -fsSL https://tern-ai-swart.vercel.app/install.sh |
+                    bash
+                  </code>
                   <button
                     type="button"
-                    onClick={() => handleCopy("curl -fsSL https://tern-ai-swart.vercel.app/install.sh | bash")}
+                    onClick={() =>
+                      handleCopy(
+                        "curl -fsSL https://tern-ai-swart.vercel.app/install.sh | bash",
+                      )
+                    }
                     className="text-text-muted hover:text-text-main cursor-pointer"
                   >
                     <Copy size={12} />
@@ -613,14 +655,19 @@ function CompanionSection({
                   <span>npm install -g https://github.com/terngg/tern-ai</span>
                   <button
                     type="button"
-                    onClick={() => handleCopy("npm install -g https://github.com/terngg/tern-ai")}
+                    onClick={() =>
+                      handleCopy(
+                        "npm install -g https://github.com/terngg/tern-ai",
+                      )
+                    }
                     className="text-text-muted hover:text-text-main cursor-pointer"
                   >
                     <Copy size={11} />
                   </button>
                 </div>
                 <p className="text-[11px] text-text-subtle">
-                  Works on Linux, macOS, and Windows. No repository cloning required.
+                  Works on Linux, macOS, and Windows. No repository cloning
+                  required.
                 </p>
               </div>
             </div>
@@ -635,15 +682,18 @@ function CompanionSection({
                     <code>tern companion pair {pairCode.code}</code>
                     <button
                       type="button"
-                      onClick={() => handleCopy(`tern companion pair ${pairCode.code}`)}
+                      onClick={() =>
+                        handleCopy(`tern companion pair ${pairCode.code}`)
+                      }
                       className="text-primary hover:underline text-xs flex items-center gap-1 cursor-pointer"
                     >
-                      {copied ? <Check size={12} /> : <Copy size={12} />}
-                      {copied ? "Copied" : "Copy"}
+                      <Copy size={12} />
+                      Copy
                     </button>
                   </div>
                   <p className="text-[11px] text-text-subtle">
-                    Code expires in 10 minutes. Pairing automatically syncs local providers and launches the background daemon.
+                    Code expires in 10 minutes. Pairing automatically syncs
+                    local providers and launches the background daemon.
                   </p>
                 </div>
               ) : (
@@ -653,7 +703,9 @@ function CompanionSection({
                   disabled={generating}
                   onClick={handleGeneratePairCode}
                 >
-                  {generating ? "Generating..." : "Generate One-Time Pairing Code"}
+                  {generating
+                    ? "Generating..."
+                    : "Generate One-Time Pairing Code"}
                 </Button>
               )}
             </div>
@@ -664,7 +716,9 @@ function CompanionSection({
           {/* Companion Connected Banner */}
           <div className="p-3.5 rounded-xl border border-green-500/20 bg-green-500/5 flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <span className="size-2 rounded-full bg-green-500 animate-pulse" />
+              <span
+                className={`size-2 rounded-full ${status.connected ? "bg-green-500" : "bg-gray-500"}`}
+              />
               <div>
                 <div className="text-xs font-semibold text-text-main">
                   Tern Companion {status.connected ? "Online" : "Offline"}
@@ -705,12 +759,12 @@ function CompanionSection({
                 {!status.connected
                   ? "Companion offline"
                   : !detected?.installed
-                  ? "Not installed"
-                  : !detected.authenticated
-                    ? "Auth required"
-                    : !detected.health.ok
-                      ? "Local check failed"
-                      : "Local check passed"}
+                    ? "Not installed"
+                    : !detected.authenticated
+                      ? "Auth required"
+                      : !detected.health.ok
+                        ? "Local check failed"
+                        : "Local check passed"}
               </Badge>
             </div>
 
@@ -718,15 +772,26 @@ function CompanionSection({
               <div className="space-y-2 text-xs">
                 {detected.version && (
                   <div className="text-text-muted">
-                    Detected version: <span className="font-mono text-text-main">{detected.version}</span>
+                    Detected version:{" "}
+                    <span className="font-mono text-text-main">
+                      {detected.version}
+                    </span>
                   </div>
                 )}
                 <div className="text-text-muted">
-                  Authentication: <span className="text-text-main">{detected.authDetails || (detected.authenticated ? "Authenticated" : "Unauthenticated")}</span>
+                  Authentication:{" "}
+                  <span className="text-text-main">
+                    {detected.authDetails ||
+                      (detected.authenticated
+                        ? "Authenticated"
+                        : "Unauthenticated")}
+                  </span>
                 </div>
                 {detected.models.length > 0 && (
                   <div>
-                    <span className="text-text-muted block mb-1">Discovered local models ({detected.models.length}):</span>
+                    <span className="text-text-muted block mb-1">
+                      Discovered local models ({detected.models.length}):
+                    </span>
                     <div className="flex flex-wrap gap-1">
                       {detected.models.map((m) => (
                         <span
@@ -742,7 +807,8 @@ function CompanionSection({
               </div>
             ) : (
               <p className="text-xs text-text-muted">
-                {provider.name} is not currently detected on this workstation. Install it locally to enable routing.
+                {provider.name} is not currently detected on this workstation.
+                Install it locally to enable routing.
               </p>
             )}
           </div>

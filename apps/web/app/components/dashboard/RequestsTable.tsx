@@ -38,7 +38,7 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
   return (
     <div className="space-y-4">
       {traces.length > 0 && (
-        <div className="flex items-center justify-between gap-3">
+        <div className="ui-table-toolbar flex items-center justify-between gap-3">
           <div className="flex items-center gap-1.5 p-1 rounded-lg border border-border-subtle bg-surface">
             {(
               [
@@ -55,6 +55,7 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
                     ? "bg-surface-2 text-text-main font-semibold shadow-sm"
                     : "text-text-muted hover:text-text-main"
                 }`}
+                aria-pressed={filter === key}
                 onClick={() => setFilter(key)}
               >
                 {label}
@@ -68,6 +69,17 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
         </div>
       )}
 
+      {!!traces.length && !filtered.length && (
+        <EmptyState
+          title="No matching requests"
+          description="No requests match this status filter."
+          action={
+            <button className="ui-button" onClick={() => setFilter("all")}>
+              Show all requests
+            </button>
+          }
+        />
+      )}
       {!traces.length ? (
         <EmptyState
           title="No requests recorded"
@@ -76,7 +88,10 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
       ) : (
         <div className="rounded-xl border border-border-subtle bg-surface overflow-hidden shadow-sm">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table
+              className="ui-data-table w-full text-left text-xs"
+              aria-label="Request history"
+            >
               <thead className="bg-surface-2/60 border-b border-border-subtle text-text-muted font-medium">
                 <tr>
                   <th className="py-2.5 px-4 font-medium">Time / ID</th>
@@ -94,7 +109,10 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
                       key={t.id}
                       className="hover:bg-surface-2/40 transition-colors"
                     >
-                      <td className="py-3 px-4 font-mono text-[11px] whitespace-nowrap">
+                      <td
+                        data-label="Time / ID"
+                        className="py-3 px-4 font-mono text-[11px] whitespace-nowrap"
+                      >
                         <div className="text-text-main">
                           {new Date(t.timestamp).toLocaleTimeString([], {
                             hour: "2-digit",
@@ -107,7 +125,7 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
                         </div>
                       </td>
 
-                      <td className="py-3 px-4">
+                      <td data-label="Route" className="py-3 px-4">
                         <div className="font-semibold text-text-main flex items-center gap-1.5">
                           <ProviderIcon
                             providerId={t.provider}
@@ -121,7 +139,8 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
                         </div>
                         <div className="text-text-muted text-[11px]">
                           Requested: {t.requestedModel} · {t.retries} retries
-                          {t.preferredProvider && ` · First choice: ${t.preferredProvider}`}
+                          {t.preferredProvider &&
+                            ` · First choice: ${t.preferredProvider}`}
                         </div>
                         {t.fallbackPath.length > 0 && (
                           <details className="mt-1 text-[10px] text-text-subtle cursor-pointer">
@@ -140,7 +159,7 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
                         )}
                       </td>
 
-                      <td className="py-3 px-4">
+                      <td data-label="Result" className="py-3 px-4">
                         <Badge
                           variant={isOk ? "success" : "error"}
                           size="sm"
@@ -152,7 +171,10 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
                         </Badge>
                       </td>
 
-                      <td className="py-3 px-4 font-mono text-[11px] whitespace-nowrap">
+                      <td
+                        data-label="Latency / TTFT"
+                        className="py-3 px-4 font-mono text-[11px] whitespace-nowrap"
+                      >
                         <span className="text-text-main">{t.latencyMs} ms</span>
                         <div className="text-text-subtle text-[10px]">
                           TTFT:{" "}
@@ -160,7 +182,10 @@ export function RequestsTable({ traces, connections }: RequestsTableProps) {
                         </div>
                       </td>
 
-                      <td className="py-3 px-4 font-mono text-[11px] whitespace-nowrap">
+                      <td
+                        data-label="Tokens / Cost"
+                        className="py-3 px-4 font-mono text-[11px] whitespace-nowrap"
+                      >
                         <span className="text-text-main">
                           {t.inputTokens ?? "?"} / {t.outputTokens ?? "?"}
                         </span>
