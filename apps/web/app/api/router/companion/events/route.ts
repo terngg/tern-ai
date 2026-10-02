@@ -39,6 +39,7 @@ export async function POST(request: Request) {
       type?: "token" | "done" | "error";
       token?: string;
       error?: string;
+      category?: string;
     };
 
     if (!token || !body.companionId || !body.jobId || !body.type) {
@@ -51,6 +52,7 @@ export async function POST(request: Request) {
       type: body.type,
       token: body.token,
       error: body.error,
+      category: body.category,
     });
 
     return NextResponse.json({ ok: true });

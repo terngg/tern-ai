@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { LocalProviderError, localProviderError } from "../src/companion/adapters/local-error.js";
 import { spawnStreaming } from "../src/companion/adapters/base.js";
 import { antigravityPrompt, antigravityText } from "../src/companion/adapters/antigravity-stream.js";
 
@@ -18,8 +19,8 @@ test("CLI drains large stderr, preserves split UTF-8 and waits for exit status",
   const { stream } = spawnStreaming(process.execPath, ["-e", "process.stderr.write('s'.repeat(200000)); const b=Buffer.from('Halo 🌏');process.stdout.write(b.subarray(0,7));setTimeout(()=>process.stdout.write(b.subarray(7)),20)"]);
   assert.equal(await collect(stream), "Halo 🌏");
   const failed = spawnStreaming(process.execPath, ["-e", "process.stderr.write('secret-token');process.exit(2)"]);
-  await assert.rejects(collect(failed.stream), (e: Error) => /process failed/.test(e.message) && !e.message.includes("secret-token"));
-  await assert.rejects(collect(spawnStreaming("/nonexistent/tern-test-binary", []).stream), /process failed/);
+  await assert.rejects(collect(failed.stream), (e: Error) => /Local provider failed/.test(e.message) && !e.message.includes("secret-token"));
+  await assert.rejects(collect(spawnStreaming("/nonexistent/tern-test-binary", []).stream), /Local provider failed/);
 });
 
 test("CLI abort escalates when a process ignores SIGTERM", { skip: process.platform === "win32" }, async () => {
@@ -53,4 +54,25 @@ test("Antigravity rejects empty, failed, truncated and malformed responses", asy
   for (const input of ["", result(""), result("private error text", "ERROR"), delta("partial"), "invalid-json\n", delta("one") + result("different")]) {
     await assert.rejects(collect(antigravityText(chunks(input))), (e: Error) => !e.message.includes("private error text"));
   }
+});
+
+
+test("CLI classifies temporary quota as a cooldown without leaking diagnostics", async () => {
+  const cases = [
+    ["429 quota exceeded token=private", "rate_limit"],
+    ["Quota exhausted for model private", "rate_limit"],
+    ["insufficient credits private", "quota_exhausted"],
+    ["authentication required private", "auth_failure"],
+    ["403 permission denied private", "permission_denied"],
+    ["deadline exceeded private", "timeout"],
+    ["503 overloaded private", "provider_overload"],
+    ["unknown model private", "bad_request"],
+  ];
+  for (const [diagnostic, expected] of cases) {
+    const error = localProviderError(diagnostic);
+    assert.equal(error.category, expected);
+    assert.ok(!error.message.includes("private"));
+  }
+  const input = JSON.stringify({ event: "result", result: { status: "ERROR", error: "Quota exhausted private" } });
+  await assert.rejects(collect(antigravityText(chunks(input))), (e: unknown) => e instanceof LocalProviderError && e.category === "rate_limit");
 });

@@ -480,3 +480,36 @@ test("empty companion completions are failures and errors never persist CLI secr
     assert.ok(rows.every(r => !String(r.error).includes("secret")));
   } finally { await pg.close(); }
 });
+
+test("Companion quota errors persist a cooldown with unknown remaining quota", async () => {
+  const { pg, db } = await pgFixture();
+  try {
+    const relay = new CompanionRelay(db);
+    const { code } = await relay.generatePairCode("user-1");
+    const { companionId } = await relay.redeemPairCode(code, "linux", "test");
+    await relay.syncHeartbeat(companionId, "linux", "test", [antigravity]);
+    const store = new RouterStore("user-1", db);
+    const [connection] = await store.connections();
+    const worker = async () => {
+      for (let i = 0; i < 50; i++) {
+        const [job] = await relay.pollPendingJobs(companionId);
+        if (job) {
+          await relay.appendJobEvent(companionId, job.id, { type: "error", category: "rate_limit", error: "private diagnostic" });
+          return;
+        }
+        await new Promise(r => setTimeout(r, 20));
+      }
+      assert.fail("No job dispatched");
+    };
+    await Promise.all([
+      assert.rejects(new RoutedClient(store, `${connection!.id}::test-flash`).complete({model:"test-flash",messages:[],stream:true,temperature:0,free:false}), /rate limited/),
+      worker(),
+    ]);
+    const current = await store.connection(connection!.id);
+    assert.equal(current.health, "rate_limit");
+    assert.ok(current.cooldownUntil! > Date.now());
+    assert.equal(current.quota, "unknown");
+    assert.equal((await store.traces())[0]?.errorCategory, "rate_limit");
+    assert.equal(eligible(current), false);
+  } finally { await pg.close(); }
+});

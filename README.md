@@ -376,6 +376,10 @@ enabled. A timeout/cancellation is relayed back to the paired Companion; late
 events cannot turn a cancelled request into a successful one. Restart Companion
 after installing an adapter update; deploying the web app alone does not update
 the CLI on the paired machine.
+Antigravity CLI authentication, permission, timeout and quota errors are reduced to
+safe categories before leaving Companion. Temporary quota/HTTP 429 failures put
+the connection on cooldown; they do not invent a remaining balance or provider
+reset time. Raw CLI diagnostics are never persisted in the request inspector.
 
 The Next.js app in `apps/web` keeps the existing GTPS knowledge base, Lua
 assistant, validation/repair, attachments, history, imports and artifact downloads.

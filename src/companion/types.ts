@@ -40,6 +40,7 @@ export interface StreamEvent {
   type: "token" | "done" | "error";
   token?: string | undefined;
   error?: string | undefined;
+  category?: import("./adapters/local-error.js").LocalErrorCategory | undefined;
 }
 
 export interface InstallGuide {

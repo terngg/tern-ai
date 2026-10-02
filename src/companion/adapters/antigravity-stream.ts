@@ -1,4 +1,5 @@
 import type { ChatMessage } from "../types.js";
+import { localProviderError } from "./local-error.js";
 
 // Headless CLI accepts one prompt. Preserve the entire supplied conversation,
 // including authoritative GTPS documentation, attachments and repair feedback.
@@ -27,7 +28,7 @@ export async function* antigravityText(stream: AsyncIterable<string>): AsyncIter
     }
     if (event?.event === "result") {
       const result = event.result;
-      if (result?.status !== "SUCCESS") throw new Error("Antigravity could not complete the response.");
+      if (result?.status !== "SUCCESS") throw localProviderError(result?.error);
       const response = typeof result.response === "string" ? result.response : "";
       if (!response.trim()) throw new Error("Antigravity returned an empty response.");
       if (!response.startsWith(emitted)) throw new Error("Antigravity returned an inconsistent response.");

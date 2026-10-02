@@ -13,6 +13,7 @@ import { parseAntigravityModels } from "./antigravity-models.js";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { antigravityPrompt, antigravityText } from "./antigravity-stream.js";
+import { LocalProviderError } from "./local-error.js";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -117,6 +118,7 @@ export class AntigravityAdapter implements LocalProviderAdapter {
       yield {
         type: "error",
         error: (err as Error)?.message || "Antigravity execution failed",
+        category: err instanceof LocalProviderError ? err.category : "server_error",
       };
     } finally {
       kill();

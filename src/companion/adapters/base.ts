@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { localProviderError } from "./local-error.js";
 import { promisify } from "node:util";
 import { execFile as nodeExecFile } from "node:child_process";
 
@@ -64,8 +65,12 @@ export function spawnStreaming(
     ...(cwd ? { cwd } : {}),
   });
   let closed = false;
-  // Drain diagnostics without retaining or exposing credentials and prompts.
-  child.stderr?.resume();
+  // Bound the local classifier buffer; continue draining even when full.
+  let diagnostic = "";
+  child.stderr?.setEncoding("utf8");
+  child.stderr?.on("data", (text: string) => {
+    if (diagnostic.length < 16_384) diagnostic += text.slice(0, 16_384 - diagnostic.length);
+  });
   const completion = new Promise<boolean>((resolve) => {
     child.once("error", () => resolve(false));
     child.once("close", (code) => {
@@ -88,7 +93,7 @@ export function spawnStreaming(
       if (child.stdout) for await (const chunk of child.stdout) yield String(chunk);
       const success = await completion;
       if (signal?.aborted) throw new Error("Local provider request cancelled.");
-      if (!success) throw new Error("Local provider process failed. Check CLI sign-in and diagnostics locally.");
+      if (!success) throw localProviderError(diagnostic);
     } finally {
       signal?.removeEventListener("abort", abort);
       kill();

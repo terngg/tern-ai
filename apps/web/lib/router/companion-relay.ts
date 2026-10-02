@@ -8,6 +8,16 @@ import type {
 } from "./types.js";
 import { RouterStore } from "./store.js";
 import { companionState, COMPANION_TIMEOUT_MS } from "./companion-state.js";
+import type { ErrorCategory } from "./types.js";
+
+const companionErrors = new Set<ErrorCategory>([
+  "auth_failure", "permission_denied", "bad_request", "rate_limit",
+  "quota_exhausted", "timeout", "provider_overload", "server_error", "network",
+]);
+function companionError(value: unknown): ErrorCategory {
+  return typeof value === "string" && companionErrors.has(value as ErrorCategory)
+    ? value as ErrorCategory : "server_error";
+}
 
 function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
@@ -213,7 +223,7 @@ export class CompanionRelay {
   async appendJobEvent(
     companionId: string,
     jobId: string,
-    event: { type: "token" | "done" | "error"; token?: string; error?: string },
+    event: { type: "token" | "done" | "error"; token?: string; error?: string; category?: string },
   ): Promise<void> {
     if (event.type === "token" && event.token) {
       await this.db.query(
@@ -228,7 +238,7 @@ export class CompanionRelay {
     } else if (event.type === "error") {
       await this.db.query(
         "UPDATE tern_relay_jobs SET status='error', error=$1, updated_at=now() WHERE id=$2 AND companion_id=$3 AND status IN ('pending', 'running')",
-        ["Local provider execution failed", jobId, companionId],
+        [companionError(event.category), jobId, companionId],
       );
     }
   }
@@ -306,7 +316,8 @@ export class CompanionRelay {
         return { text };
       }
       if (job.status === "error") {
-        throw new RouteError("server_error", 502);
+        const category = companionError(job.error);
+        throw new RouteError(category, category === "rate_limit" ? 429 : 502);
       }
 
       await new Promise((r) => setTimeout(r, 200));
