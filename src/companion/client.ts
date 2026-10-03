@@ -55,7 +55,9 @@ export class CompanionClient {
       `✓ Tern Companion running as [${this.config.label}] (${this.config.companionId})\n`,
     );
     process.stdout.write(`  Connected to: ${this.config.serverUrl}\n`);
-    process.stdout.write("  Outbound relay listener active. Ready for local requests.\n");
+    process.stdout.write(
+      "  Outbound relay listener active. Ready for local requests.\n",
+    );
 
     // Initial registration
     await this.reportStatus();
@@ -114,6 +116,7 @@ export class CompanionClient {
           }>;
           temperature?: number;
           maxTokens?: number;
+          reasoningEffort?: string;
         };
       }>;
       cancels?: string[];
@@ -131,9 +134,12 @@ export class CompanionClient {
 
     if (Array.isArray(data.jobs) && data.jobs.length > 0) {
       for (const job of data.jobs) {
-        if (!this.activeJobs.has(job.id)) void this.handleJob(job).catch(() => {
-          process.stderr.write("[companion] Job delivery failed; no completion was acknowledged.\n");
-        });
+        if (!this.activeJobs.has(job.id))
+          void this.handleJob(job).catch(() => {
+            process.stderr.write(
+              "[companion] Job delivery failed; no completion was acknowledged.\n",
+            );
+          });
       }
     }
   }
@@ -149,6 +155,7 @@ export class CompanionClient {
       }>;
       temperature?: number;
       maxTokens?: number;
+      reasoningEffort?: string;
     };
   }): Promise<void> {
     const adapter = getLocalAdapter(job.provider);
@@ -169,18 +176,25 @@ export class CompanionClient {
       messages: job.request.messages,
       temperature: job.request.temperature,
       maxTokens: job.request.maxTokens,
+      reasoningEffort: job.request.reasoningEffort,
       signal: controller.signal,
     };
 
     try {
-      await relayStream(adapter.chat(chatReq), (event, sequence) =>
-        this.sendJobEvent(job.id, event, sequence, controller.signal), controller);
+      await relayStream(
+        adapter.chat(chatReq),
+        (event, sequence) =>
+          this.sendJobEvent(job.id, event, sequence, controller.signal),
+        controller,
+      );
     } catch {
       // A failed delivery is never silently treated as success. Terminal errors
       // are idempotent even if a previous acknowledgement was lost.
       controller.abort();
       await this.sendJobEvent(job.id, {
-        type: "error", category: "network", error: "Local stream delivery failed.",
+        type: "error",
+        category: "network",
+        error: "Local stream delivery failed.",
       });
     } finally {
       this.activeJobs.delete(job.id);
@@ -193,9 +207,16 @@ export class CompanionClient {
     sequence?: number,
     signal?: AbortSignal,
   ): Promise<void> {
-    await postRelayEvent(`${this.config.serverUrl}/api/router/companion/events`, this.config.token, {
-      companionId: this.config.companionId, jobId, ...event,
-      ...(sequence === undefined ? {} : { sequence }),
-    }, signal);
+    await postRelayEvent(
+      `${this.config.serverUrl}/api/router/companion/events`,
+      this.config.token,
+      {
+        companionId: this.config.companionId,
+        jobId,
+        ...event,
+        ...(sequence === undefined ? {} : { sequence }),
+      },
+      signal,
+    );
   }
 }

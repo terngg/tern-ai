@@ -561,3 +561,39 @@ test('relay records actual CLI token usage and polling cannot dispatch a job twi
     assert.deepEqual(result,{text:'hello',usage:{inputTokens:120,outputTokens:5}});
   }finally{await pg.close();}
 });
+
+test("Codex exact model and reasoning mode are isolated, validated and relayed separately", async () => {
+  const { pg, db } = await pgFixture();
+  try {
+    const relay = new CompanionRelay(db), store = new RouterStore("user-1", db);
+    const { code } = await relay.generatePairCode("user-1");
+    const paired = await relay.redeemPairCode(code, "linux", "test");
+    await relay.syncHeartbeat(paired.companionId, "linux", "test", [{ ...antigravity, id: "codex", name: "Codex CLI", models: [{ id: "test-code", name: "Test Code", source: "discovered", defaultReasoningEffort: "low", reasoningEfforts: ["low", "ultra"] }] }]);
+    const [connection] = await store.connections();
+    const selection = `${connection!.id}::test-code::ultra`;
+    assert.equal(canonicalSelection(selection, [connection!]), selection);
+    const options = { model: selection, messages: [{ role: "user" as const, content: "hello" }], stream: true, temperature: 0, free: false };
+    for (const suffix of ["high", "ultra::extra"])
+      await assert.rejects(new RoutedClient(store, `${connection!.id}::test-code::${suffix}`).complete(options), /reasoning mode|Invalid model/);
+    await assert.rejects(new RoutedClient(new RouterStore("user-2", db), selection).complete(options), /reasoning mode/);
+    const worker = async () => {
+      for (let i=0;i<60;i++) {
+        const jobs=await relay.pollPendingJobs(paired.companionId);
+        if(jobs.length){
+          assert.equal(jobs[0]!.model,"test-code");
+          assert.equal((jobs[0]!.request as { reasoningEffort?: string }).reasoningEffort,"ultra");
+          await relay.appendJobEvent(paired.companionId,jobs[0]!.id,{type:"token",token:"answer"});
+          await relay.appendJobEvent(paired.companionId,jobs[0]!.id,{type:"done"});return;
+        }
+        await new Promise(r=>setTimeout(r,25));
+      }
+      assert.fail("No Codex job dispatched");
+    };
+    const [text] = await Promise.all([new RoutedClient(store,selection).complete(options),worker()]);
+    assert.equal(text,"answer");
+    const [trace] = await store.traces();
+    assert.equal(trace!.selectedModel,"test-code");
+    assert.equal(trace!.reasoningEffort,"ultra");
+    assert.equal((await new RouterStore("user-2", db).traces()).length,0);
+  } finally { await pg.close(); }
+});

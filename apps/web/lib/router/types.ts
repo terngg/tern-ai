@@ -63,6 +63,8 @@ export interface Model {
   id: string;
   name: string;
   contextWindow?: number;
+  defaultReasoningEffort?: string;
+  reasoningEfforts?: string[];
   inputPrice?: number;
   outputPrice?: number;
   source: "discovered" | "configured";
@@ -108,6 +110,7 @@ export interface Trace {
   provider: string;
   connectionId: string;
   routingMode: string;
+  reasoningEffort?: string;
   preferredProvider?: string;
   retries: number;
   fallbackPath: string[];

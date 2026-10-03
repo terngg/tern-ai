@@ -211,3 +211,26 @@ test("chat selects every discovered model, prefers a provider, persists choices 
     fullPage: true,
   });
 });
+
+for (const width of [1440, 390, 360]) test(`Codex catalog preserves all models and supported reasoning choices at ${width}px`, async ({page}) => {
+  await page.setViewportSize({width,height:844});
+  const models=Array.from({length:8},(_,i)=>({id:`test-codex-${i}`,name:`Codex model ${i}`,source:"discovered",defaultReasoningEffort:"low",reasoningEfforts:i===0?["low","medium","high","ultra"]:["low"]}));
+  await page.route("**/api/router",r=>r.fulfill({json:{connections:[{id:"cx",provider:"codex",label:"Own CLI",enabled:true,model:models[0]!.id,models,health:"connected",quota:"unknown"}],pools:[],traces:[]}}));
+  const requests:Record<string,unknown>[]=[];
+  await page.route("**/api/ai/generate",r=>{requests.push(r.request().postDataJSON());return r.fulfill({contentType:"text/event-stream",body:'data: {"type":"result","text":"hello","explanation":"hello"}\n\ndata: {"type":"done"}\n\n'})});
+  await page.goto("/");await expect(page.locator("main")).toHaveAttribute("data-ready","true");
+  await page.getByRole("combobox",{name:"Routing model",exact:true}).click();
+  for(const m of models) await expect(page.locator(`[role="option"][data-value="cx::${m.id}"]`)).toHaveCount(1);
+  await expect(page.locator('[role="option"][data-value="cx::test-codex-1::ultra"]')).toHaveCount(0);
+  await page.getByPlaceholder("Search models…").fill("Ultra");
+  await page.locator('[role="option"][data-value="cx::test-codex-0::ultra"]').click();
+  await expect(page.locator(".chat-routing-hint")).toContainText("higher effort may use more quota");
+  await page.reload();await expect(page.getByRole("combobox",{name:"Routing model",exact:true})).toHaveAttribute("data-value","cx::test-codex-0::ultra");
+  await page.locator("textarea").fill("hello");await page.getByRole("button",{name:"Send",exact:false}).click();
+  await expect.poll(()=>requests.length).toBe(1);expect(requests[0]!.routerModel).toBe("cx::test-codex-0::ultra");
+  await page.getByRole("combobox",{name:"Routing model",exact:true}).click();
+  await page.screenshot({path:`test-results/codex-picker-${width}.png`,fullPage:true,animations:"disabled"});
+  await page.keyboard.press("Escape");await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("select,option")).toHaveCount(0);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});

@@ -3,6 +3,7 @@ import { localProviderError } from "./local-error.js";
 
 export interface CodexModel extends LocalModel {
   defaultReasoningEffort?: string;
+  reasoningEfforts?: string[];
 }
 export function parseCodexModels(text: string): CodexModel[] {
   let catalog;
@@ -15,6 +16,8 @@ export function parseCodexModels(text: string): CodexModel[] {
   const models = new Map<string, CodexModel>();
   for (const model of catalog.models) {
     if (
+      !model ||
+      typeof model !== "object" ||
       model.visibility !== "list" ||
       typeof model.slug !== "string" ||
       !/^[a-z0-9][a-z0-9._/-]{0,127}$/.test(model.slug)
@@ -24,15 +27,45 @@ export function parseCodexModels(text: string): CodexModel[] {
       typeof model.display_name === "string" && model.display_name.length <= 200
         ? model.display_name
         : model.slug;
+    const efforts = [
+      ...new Set<string>(
+        Array.isArray(model.supported_reasoning_levels)
+          ? model.supported_reasoning_levels
+              .map((e: { effort?: string }) => e?.effort)
+              .filter(
+                (e: unknown) =>
+                  typeof e === "string" &&
+                  [
+                    "none",
+                    "minimal",
+                    "low",
+                    "medium",
+                    "high",
+                    "xhigh",
+                    "max",
+                    "ultra",
+                  ].includes(e),
+              )
+          : [],
+      ),
+    ];
     models.set(model.slug, {
       id: model.slug,
+      ...(efforts.length ? { reasoningEfforts: efforts } : {}),
       name,
       ...(Number.isSafeInteger(model.context_window) && model.context_window > 0
         ? { contextWindow: model.context_window }
         : {}),
-      ...(["none", "minimal", "low", "medium", "high", "xhigh", "max"].includes(
-        model.default_reasoning_level,
-      )
+      ...([
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max",
+        "ultra",
+      ].includes(model.default_reasoning_level)
         ? { defaultReasoningEffort: model.default_reasoning_level }
         : {}),
     });

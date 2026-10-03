@@ -11,20 +11,49 @@ export function parseCodexModels(text) {
         return [];
     const models = new Map();
     for (const model of catalog.models) {
-        if (model.visibility !== "list" ||
+        if (!model ||
+            typeof model !== "object" ||
+            model.visibility !== "list" ||
             typeof model.slug !== "string" ||
             !/^[a-z0-9][a-z0-9._/-]{0,127}$/.test(model.slug))
             continue;
         const name = typeof model.display_name === "string" && model.display_name.length <= 200
             ? model.display_name
             : model.slug;
+        const efforts = [
+            ...new Set(Array.isArray(model.supported_reasoning_levels)
+                ? model.supported_reasoning_levels
+                    .map((e) => e?.effort)
+                    .filter((e) => typeof e === "string" &&
+                    [
+                        "none",
+                        "minimal",
+                        "low",
+                        "medium",
+                        "high",
+                        "xhigh",
+                        "max",
+                        "ultra",
+                    ].includes(e))
+                : []),
+        ];
         models.set(model.slug, {
             id: model.slug,
+            ...(efforts.length ? { reasoningEfforts: efforts } : {}),
             name,
             ...(Number.isSafeInteger(model.context_window) && model.context_window > 0
                 ? { contextWindow: model.context_window }
                 : {}),
-            ...(["none", "minimal", "low", "medium", "high", "xhigh", "max"].includes(model.default_reasoning_level)
+            ...([
+                "none",
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+                "max",
+                "ultra",
+            ].includes(model.default_reasoning_level)
                 ? { defaultReasoningEffort: model.default_reasoning_level }
                 : {}),
         });

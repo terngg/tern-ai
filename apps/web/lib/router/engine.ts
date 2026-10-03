@@ -191,13 +191,22 @@ export class RoutedClient implements CompletionClient {
     if (virtual && this.preferredProvider && !candidates.some(
       (c) => c.enabled && c.provider === this.preferredProvider,
     )) throw new PublicError("Preferred provider is unavailable. Choose an enabled provider or clear the preference.", 409);
+    let reasoningEffort: string | undefined;
     if (!virtual) {
       const selection = canonicalSelection(this.requestedModel, all);
       const separator = selection.indexOf("::");
       if (separator < 0)
         throw new PublicError("Select a virtual model or connection::model.");
       const id = selection.slice(0, separator),
-        model = selection.slice(separator + 2);
+        [model, effort, ...extra] = selection.slice(separator + 2).split("::");
+      if (!model || extra.length) throw new PublicError("Invalid model selection.");
+      if (effort) {
+        const connection = candidates.find((c) => c.id === id);
+        if (connection?.provider !== "codex" || !connection.baseUrl.startsWith("companion://") ||
+          !connection.models.find((m) => m.id === model)?.reasoningEfforts?.includes(effort))
+          throw new PublicError("Selected reasoning mode is unavailable for this model.");
+        reasoningEffort = effort;
+      }
       candidates = candidates
         .filter(
           (c) =>
@@ -290,6 +299,7 @@ export class RoutedClient implements CompletionClient {
         id: randomUUID(),
         timestamp: started,
         requestedModel: this.requestedModel,
+        ...(reasoningEffort ? { reasoningEffort } : {}),
         selectedModel: c.model,
         provider: c.provider,
         connectionId: c.id,
@@ -340,6 +350,7 @@ export class RoutedClient implements CompletionClient {
             },
             signal,
             c.timeoutMs,
+            reasoningEffort,
           );
           resultText = companionRes.text;
           inputTokens = companionRes.usage?.inputTokens ?? null;

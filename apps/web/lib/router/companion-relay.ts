@@ -387,6 +387,7 @@ export class CompanionRelay {
     onToken?: (token: string) => void,
     signal?: AbortSignal,
     timeoutMs = COMPANION_TIMEOUT_MS,
+    reasoningEffort?: string,
   ): Promise<{
     text: string;
     usage?: { inputTokens: number; outputTokens: number };
@@ -411,7 +412,7 @@ export class CompanionRelay {
     }
 
     const jobId = `job_${randomBytes(12).toString("hex")}`;
-    const requestPayload = { messages, temperature, maxTokens };
+    const requestPayload = { messages, temperature, maxTokens, ...(reasoningEffort ? { reasoningEffort } : {}) };
 
     await this.db.query(
       "INSERT INTO tern_relay_jobs(id, user_id, companion_id, provider, model, request, status) VALUES($1, $2, $3, $4, $5, $6::jsonb, 'pending')",

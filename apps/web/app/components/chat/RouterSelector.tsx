@@ -5,6 +5,17 @@ import { canonicalSelection } from "../../../lib/router/model-selection";
 import type { Connection, PoolConfig } from "../../../lib/router/types";
 import { connectionStatus } from "../providers/RouterDashboard";
 import { Select, type SelectOption } from "../ui/Select";
+const effortName = (effort: string) =>
+  ({
+    none: "None",
+    minimal: "Minimal",
+    low: "Low",
+    medium: "Medium",
+    high: "High",
+    xhigh: "Extra high",
+    max: "Max",
+    ultra: "Ultra",
+  })[effort] || effort;
 interface Snapshot {
   connections: Connection[];
   pools: PoolConfig[];
@@ -36,9 +47,14 @@ export function RouterSelector({
         .finally(() => setLoaded(true));
     };
     load();
+    // Companion discovery changes independently of provider edits. Refresh while visible.
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") load();
+    }, 30000);
     window.addEventListener("tern-router-changed", load);
     window.addEventListener("focus", load);
     return () => {
+      clearInterval(timer);
       window.removeEventListener("tern-router-changed", load);
       window.removeEventListener("focus", load);
     };
@@ -51,7 +67,15 @@ export function RouterSelector({
   const catalog = accounts.map((c) => ({
     connection: c,
     models: [
-      ...new Map<string, { id: string; name: string }>([
+      ...new Map<
+        string,
+        {
+          id: string;
+          name: string;
+          reasoningEfforts?: string[];
+          defaultReasoningEffort?: string;
+        }
+      >([
         ...(c.model
           ? [[c.model, { id: c.model, name: c.model }] as const]
           : []),
@@ -64,7 +88,15 @@ export function RouterSelector({
   const modelAvailable =
     automatic ||
     catalog.some(({ connection, models }) =>
-      models.some((m) => `${connection.id}::${m.id}` === selectedModel),
+      models.some(
+        (m) =>
+          `${connection.id}::${m.id}` === selectedModel ||
+          (connection.provider === "codex" &&
+            m.reasoningEfforts?.some(
+              (effort) =>
+                `${connection.id}::${m.id}::${effort}` === selectedModel,
+            )),
+      ),
     );
   const providerIds = [
     ...new Set(accounts.filter((c) => c.model).map((c) => c.provider)),
@@ -90,17 +122,34 @@ export function RouterSelector({
       ? [{ value: model, label: "Selected model unavailable", disabled: true }]
       : []),
     ...catalog.flatMap(({ connection: c, models }) =>
-      models.map((m) => ({
-        value: `${c.id}::${m.id}`,
-        label: m.name,
-        group: `${providerName(c.provider)} · ${c.label}`,
-        groupStatus: connectionStatus(c),
-        description: m.id,
-        keywords: c.provider,
-        badges: [
-          c.models.find((model) => model.id === m.id)?.source || "configured",
-        ],
-      })),
+      models.flatMap((m) => {
+        const base = {
+          value: `${c.id}::${m.id}`,
+          label:
+            c.provider === "codex" && m.defaultReasoningEffort
+              ? `${m.name} · Default (${effortName(m.defaultReasoningEffort)})`
+              : m.name,
+          group: `${providerName(c.provider)} · ${c.label}`,
+          groupStatus: connectionStatus(c),
+          description: m.id,
+          keywords: c.provider,
+          badges: [
+            c.models.find((model) => model.id === m.id)?.source || "configured",
+          ],
+        };
+        return [
+          base,
+          ...(c.provider === "codex" ? m.reasoningEfforts || [] : []).map(
+            (effort) => ({
+              ...base,
+              value: `${c.id}::${m.id}::${effort}`,
+              label: `${m.name} · ${effortName(effort)}`,
+              description: `${m.id} · Reasoning: ${effortName(effort)}`,
+              badges: [...base.badges, "reasoning"],
+            }),
+          ),
+        ];
+      }),
     ),
   ];
   return (
@@ -182,7 +231,7 @@ export function RouterSelector({
             : !accounts.length
               ? "Add an enabled connection in Providers to choose a model."
               : !automatic
-                ? "Uses this exact model and account. Select Auto to allow provider fallback."
+                ? `Uses this exact model and account.${selectedModel.split("::")[2] ? ` Reasoning: ${effortName(selectedModel.split("::")[2]!)}; higher effort may use more quota.` : ""} Select Auto to allow provider fallback.`
                 : provider
                   ? `${providerName(provider)} is tried first when eligible, then other accounts in this pool. Uses each account’s default model.`
                   : "Auto uses each account’s default model and the selected routing strategy."}

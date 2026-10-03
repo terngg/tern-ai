@@ -120,6 +120,7 @@ export class CompanionClient {
             messages: job.request.messages,
             temperature: job.request.temperature,
             maxTokens: job.request.maxTokens,
+            reasoningEffort: job.request.reasoningEffort,
             signal: controller.signal,
         };
         try {
@@ -130,7 +131,9 @@ export class CompanionClient {
             // are idempotent even if a previous acknowledgement was lost.
             controller.abort();
             await this.sendJobEvent(job.id, {
-                type: "error", category: "network", error: "Local stream delivery failed.",
+                type: "error",
+                category: "network",
+                error: "Local stream delivery failed.",
             });
         }
         finally {
@@ -139,7 +142,9 @@ export class CompanionClient {
     }
     async sendJobEvent(jobId, event, sequence, signal) {
         await postRelayEvent(`${this.config.serverUrl}/api/router/companion/events`, this.config.token, {
-            companionId: this.config.companionId, jobId, ...event,
+            companionId: this.config.companionId,
+            jobId,
+            ...event,
             ...(sequence === undefined ? {} : { sequence }),
         }, signal);
     }

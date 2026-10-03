@@ -26,6 +26,12 @@ export async function detectAllLocalProviders(): Promise<
             id: m.id,
             name: m.name,
             contextWindow: m.contextWindow,
+            ...(m.reasoningEfforts?.length
+              ? {
+                  reasoningEfforts: m.reasoningEfforts,
+                  defaultReasoningEffort: m.defaultReasoningEffort,
+                }
+              : {}),
             source: "discovered" as const,
           })),
           health,

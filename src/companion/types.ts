@@ -20,6 +20,8 @@ export interface LocalModel {
   id: string;
   name: string;
   contextWindow?: number | undefined;
+  defaultReasoningEffort?: string | undefined;
+  reasoningEfforts?: string[] | undefined;
 }
 
 export interface ChatMessage {
@@ -33,6 +35,7 @@ export interface ChatRequest {
   messages: ChatMessage[];
   temperature?: number | undefined;
   maxTokens?: number | undefined;
+  reasoningEffort?: string | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -61,9 +64,15 @@ export interface DetectedLocalProvider {
     id: string;
     name: string;
     contextWindow?: number | undefined;
+    defaultReasoningEffort?: string | undefined;
+    reasoningEfforts?: string[] | undefined;
     source: "discovered" | "configured";
   }>;
-  health: { ok: boolean; latencyMs?: number | undefined; error?: string | undefined };
+  health: {
+    ok: boolean;
+    latencyMs?: number | undefined;
+    error?: string | undefined;
+  };
 }
 
 export interface LocalProviderAdapter {

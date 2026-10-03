@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { parseCodexModels, codexText, } from "./codex-stream.js";
 import { antigravityPrompt } from "./antigravity-stream.js";
 import { LocalProviderError } from "./local-error.js";
+import { discoverCodexModels } from "./codex-catalog.js";
 export class CodexAdapter {
     id = "codex";
     name = "Codex CLI";
@@ -38,7 +39,20 @@ export class CodexAdapter {
         const det = await this.detect();
         if (!det.installed || !det.path)
             return [];
+        const official = await discoverCodexModels(det.path);
         const catalog = await runCommand(det.path, ["debug", "models"], 8000);
+        if (official.length) {
+            const context = catalog.code === 0 ? parseCodexModels(catalog.stdout) : [];
+            return official.map((model) => ({
+                ...model,
+                ...(context.find((m) => m.id === model.id)?.contextWindow
+                    ? {
+                        contextWindow: context.find((m) => m.id === model.id)
+                            .contextWindow,
+                    }
+                    : {}),
+            }));
+        }
         if (catalog.code === 0)
             return parseCodexModels(catalog.stdout);
         // Older CLI releases may only expose their own public metadata cache.
@@ -85,6 +99,15 @@ export class CodexAdapter {
             };
             return;
         }
+        if (request.reasoningEffort &&
+            !selected?.reasoningEfforts?.includes(request.reasoningEffort)) {
+            yield {
+                type: "error",
+                category: "bad_request",
+                error: "Selected reasoning mode is not supported by this Codex model.",
+            };
+            return;
+        }
         const workspace = await mkdtemp(join(tmpdir(), "tern-codex-"));
         const instructionsFile = join(workspace, "tern-chat-instructions.txt");
         await writeFile(instructionsFile, "You are Tern AI, a text-only GTPS Lua assistant. Answer the final user turn in the supplied JSON conversation directly. " +
@@ -112,8 +135,9 @@ export class CodexAdapter {
         if (request.model && request.model !== "auto")
             args.push("-m", request.model);
         // Use the model's declared default, rather than a developer's local high-effort setting.
-        if (selected?.defaultReasoningEffort)
-            args.push("-c", `model_reasoning_effort=${JSON.stringify(selected.defaultReasoningEffort)}`);
+        const effort = request.reasoningEffort || selected?.defaultReasoningEffort;
+        if (effort)
+            args.push("-c", `model_reasoning_effort=${JSON.stringify(effort)}`);
         args.push(antigravityPrompt(request.messages));
         const { stream, kill } = spawnStreaming(det.path, args, request.signal, workspace);
         this.activeProcesses.set(request.id, kill);
