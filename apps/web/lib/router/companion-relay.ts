@@ -223,8 +223,37 @@ export class CompanionRelay {
   async appendJobEvent(
     companionId: string,
     jobId: string,
-    event: { type: "token" | "done" | "error"; token?: string; error?: string; category?: string },
+    event: { type: "token" | "done" | "error"; token?: string; error?: string; category?: string; sequence?: number },
   ): Promise<void> {
+    if (event.sequence !== undefined) {
+      const sequence = event.sequence;
+      if (!Number.isSafeInteger(sequence) || sequence < 0 || sequence > 2_000_000)
+        throw new PublicError("Invalid event sequence.");
+      const category = companionError(event.category);
+      const { rows } = event.type === "token"
+        ? await this.db.query(
+          "UPDATE tern_relay_jobs SET chunks=chunks || $1::jsonb, updated_at=now() WHERE id=$2 AND companion_id=$3 AND status IN ('pending','running') AND jsonb_array_length(chunks)=$4 RETURNING id",
+          [JSON.stringify([event.token]), jobId, companionId, sequence],
+        )
+        : await this.db.query(
+          "UPDATE tern_relay_jobs SET status=$1, error=$2, updated_at=now() WHERE id=$3 AND companion_id=$4 AND status IN ('pending','running') AND jsonb_array_length(chunks)=$5 RETURNING id",
+          [event.type === "done" ? "completed" : "error", event.type === "error" ? category : null, jobId, companionId, sequence],
+        );
+      if (rows.length) return;
+      // Token chunk count is the durable sequence cursor. An acknowledgement
+      // lost in transit may be retried only with the exact same event payload.
+      const { rows: current } = await this.db.query<{ status: string; count: number; token: string | null; error: string | null }>(
+        "SELECT status,jsonb_array_length(chunks) AS count,chunks->>$3::integer AS token,error FROM tern_relay_jobs WHERE id=$1 AND companion_id=$2",
+        [jobId, companionId, sequence],
+      );
+      const job = current[0];
+      if (!job) throw new PublicError("Relay job not found.", 404);
+      if (job.status === "cancelled") throw new PublicError("Relay job was cancelled.", 410);
+      if (event.type === "token" && job.count > sequence && job.token === event.token) return;
+      if (job.count === sequence && ((event.type === "done" && job.status === "completed") ||
+        (event.type === "error" && job.status === "error" && job.error === category))) return;
+      throw new PublicError("Relay event is out of order.", 409);
+    }
     if (event.type === "token" && event.token) {
       await this.db.query(
         "UPDATE tern_relay_jobs SET chunks = chunks || $1::jsonb, updated_at=now() WHERE id=$2 AND companion_id=$3 AND status IN ('pending', 'running')",

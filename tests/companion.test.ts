@@ -513,3 +513,26 @@ test("Companion quota errors persist a cooldown with unknown remaining quota", a
     assert.equal(eligible(current), false);
   } finally { await pg.close(); }
 });
+
+test("relay acknowledgements are durable, ordered, idempotent, and scoped to the paired Companion", async () => {
+  const { pg, db } = await pgFixture();
+  try {
+    const relay = new CompanionRelay(db);
+    const { code } = await relay.generatePairCode("user-1");
+    const { companionId } = await relay.redeemPairCode(code, "linux", "test");
+    await db.query("INSERT INTO tern_relay_jobs(id,user_id,companion_id,provider,model,request) VALUES('delivery-job','user-1',$1,'antigravity','test','{}')", [companionId]);
+    const append = (sequence: number, type: "token" | "done", token?: string) => relay.appendJobEvent(companionId, "delivery-job", { sequence, type, ...(token === undefined ? {} : { token }) });
+    await append(0, "token", "one ");
+    await append(0, "token", "one "); // committed upload, lost acknowledgement
+    await assert.rejects(append(0, "token", "different"), /out of order/);
+    await assert.rejects(append(2, "done"), /out of order/);
+    await assert.rejects(relay.appendJobEvent("other-companion", "delivery-job", { sequence: 1, type: "token", token: "foreign" }), /not found/);
+    await Promise.all([append(1, "token", "two"), append(1, "token", "two")]);
+    await append(2, "done"); await append(2, "done");
+    await assert.rejects(append(2, "token", "late"), /out of order/);
+    const { rows } = await db.query("SELECT chunks,status FROM tern_relay_jobs WHERE id='delivery-job'");
+    assert.deepEqual(rows[0]?.chunks, ["one ", "two"]); assert.equal(rows[0]?.status, "completed");
+    await db.query("UPDATE tern_relay_jobs SET status='cancelled' WHERE id='delivery-job'");
+    await assert.rejects(append(2, "done"), /cancelled/);
+  } finally { await pg.close(); }
+});

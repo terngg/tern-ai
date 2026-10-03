@@ -1,6 +1,7 @@
 import { loadCompanionConfig } from "./config.js";
 import { getLocalAdapter } from "./registry.js";
 import { detectAllLocalProviders } from "./detector.js";
+import { relayStream, postRelayEvent } from "./relay-stream.js";
 export class CompanionClient {
     config;
     running = false;
@@ -95,7 +96,10 @@ export class CompanionClient {
         }
         if (Array.isArray(data.jobs) && data.jobs.length > 0) {
             for (const job of data.jobs) {
-                void this.handleJob(job);
+                if (!this.activeJobs.has(job.id))
+                    void this.handleJob(job).catch(() => {
+                        process.stderr.write("[companion] Job delivery failed; no completion was acknowledged.\n");
+                    });
             }
         }
     }
@@ -119,42 +123,25 @@ export class CompanionClient {
             signal: controller.signal,
         };
         try {
-            for await (const event of adapter.chat(chatReq)) {
-                if (controller.signal.aborted)
-                    break;
-                await this.sendJobEvent(job.id, event);
-            }
+            await relayStream(adapter.chat(chatReq), (event, sequence) => this.sendJobEvent(job.id, event, sequence, controller.signal), controller);
         }
-        catch (err) {
+        catch {
+            // A failed delivery is never silently treated as success. Terminal errors
+            // are idempotent even if a previous acknowledgement was lost.
+            controller.abort();
             await this.sendJobEvent(job.id, {
-                type: "error",
-                error: err?.message || "Execution failed",
+                type: "error", category: "network", error: "Local stream delivery failed.",
             });
         }
         finally {
             this.activeJobs.delete(job.id);
         }
     }
-    async sendJobEvent(jobId, event) {
-        const url = `${this.config.serverUrl}/api/router/companion/events`;
-        try {
-            await fetch(url, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${this.config.token}`,
-                },
-                body: JSON.stringify({
-                    companionId: this.config.companionId,
-                    jobId,
-                    ...event,
-                }),
-                signal: AbortSignal.timeout(5000),
-            });
-        }
-        catch {
-            /* ignore send error */
-        }
+    async sendJobEvent(jobId, event, sequence, signal) {
+        await postRelayEvent(`${this.config.serverUrl}/api/router/companion/events`, this.config.token, {
+            companionId: this.config.companionId, jobId, ...event,
+            ...(sequence === undefined ? {} : { sequence }),
+        }, signal);
     }
 }
 //# sourceMappingURL=client.js.map
