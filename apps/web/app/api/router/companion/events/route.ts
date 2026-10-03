@@ -41,6 +41,7 @@ export async function POST(request: Request) {
       error?: string;
       category?: string;
       sequence?: number;
+      usage?: { inputTokens: number; outputTokens: number };
     };
 
     if (!token || !body.companionId || !body.jobId || !body.type) {
@@ -59,6 +60,7 @@ export async function POST(request: Request) {
       token: body.token,
       error: body.error,
       category: body.category,
+      ...(body.usage === undefined ? {} : { usage: body.usage }),
       ...(body.sequence === undefined ? {} : { sequence: body.sequence }),
     });
 

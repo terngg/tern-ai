@@ -1,14 +1,10 @@
 import { findBinary, runCommand, spawnStreaming } from "./base.js";
-import { existsSync } from "node:fs";
-import { homedir } from "node:os";
+import { readFile, mkdtemp, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-const CODEX_MODELS = [
-    { id: "gpt-6-astra", name: "GPT-6 Astra (Default)" },
-    { id: "gpt-4o", name: "GPT-4o (Omni multimodal)" },
-    { id: "gpt-4o-mini", name: "GPT-4o-mini (Fast & efficient)" },
-    { id: "o1", name: "o1 (High reasoning)" },
-    { id: "o3-mini", name: "o3-mini (Reasoning)" },
-];
+import { parseCodexModels, codexText, } from "./codex-stream.js";
+import { antigravityPrompt } from "./antigravity-stream.js";
+import { LocalProviderError } from "./local-error.js";
 export class CodexAdapter {
     id = "codex";
     name = "Codex CLI";
@@ -30,48 +26,29 @@ export class CodexAdapter {
         if (!det.installed || !det.path) {
             return { authenticated: false, details: "Codex CLI not installed" };
         }
-        // Check config directory ~/.codex
-        const configDir = join(homedir(), ".codex");
-        const hasConfig = existsSync(configDir) || existsSync(join(configDir, "config.json"));
-        // Check CLI status command
-        const { stdout, code } = await runCommand(det.path, ["auth", "status"], 4000);
-        if (code === 0 && !stdout.toLowerCase().includes("not logged in")) {
-            return {
-                authenticated: true,
-                details: stdout || "Authenticated",
-            };
-        }
-        if (hasConfig) {
-            return {
-                authenticated: true,
-                details: "Config found in ~/.codex",
-            };
-        }
+        const status = await runCommand(det.path, ["login", "status"], 4000);
         return {
-            authenticated: false,
-            details: "Not logged in. Run `codex login`",
+            authenticated: status.code === 0 && /logged in/i.test(status.stdout + status.stderr),
+            details: status.code === 0
+                ? "Local CLI sign-in available"
+                : "Sign in locally with codex login",
         };
     }
     async listModels() {
         const det = await this.detect();
         if (!det.installed || !det.path)
-            return CODEX_MODELS;
+            return [];
+        const catalog = await runCommand(det.path, ["debug", "models"], 8000);
+        if (catalog.code === 0)
+            return parseCodexModels(catalog.stdout);
+        // Older CLI releases may only expose their own public metadata cache.
+        // Never use a fabricated fallback list or read/upload local auth files.
         try {
-            const { stdout, code } = await runCommand(det.path, ["models", "list"], 4000);
-            if (code === 0 && stdout) {
-                const lines = stdout
-                    .split(/\r?\n/)
-                    .map((l) => l.trim())
-                    .filter((l) => l && !l.startsWith("#"));
-                if (lines.length > 0) {
-                    return lines.map((id) => ({ id, name: id }));
-                }
-            }
+            return parseCodexModels(await readFile(join(process.env.CODEX_HOME || join(homedir(), ".codex"), "models_cache.json"), "utf8"));
         }
         catch {
-            /* fallback */
+            return [];
         }
-        return CODEX_MODELS;
     }
     async health() {
         const start = Date.now();
@@ -79,83 +56,74 @@ export class CodexAdapter {
         if (!det.installed || !det.path) {
             return { ok: false, error: "Codex CLI is not installed" };
         }
-        const { code, stderr } = await runCommand(det.path, ["--version"], 3000);
-        const latency = Date.now() - start;
-        if (code === 0) {
-            return { ok: true, latencyMs: latency };
-        }
+        const auth = await this.authStatus();
         return {
-            ok: false,
-            latencyMs: latency,
-            error: stderr || `Exit code ${code}`,
+            ok: auth.authenticated,
+            latencyMs: Date.now() - start,
+            ...(!auth.authenticated
+                ? { error: "Sign in locally with codex login" }
+                : {}),
         };
     }
     async *chat(request) {
         const det = await this.detect();
         if (!det.installed || !det.path) {
-            yield { type: "error", error: "Codex CLI not installed" };
+            yield {
+                type: "error",
+                category: "network",
+                error: "Codex CLI not installed",
+            };
             return;
         }
-        const lastMessage = request.messages[request.messages.length - 1]?.content || "";
-        const systemPrompt = request.messages
-            .filter((m) => m.role === "system")
-            .map((m) => m.content)
-            .join("\n\n");
-        const fullPrompt = systemPrompt
-            ? `${systemPrompt}\n\nUser: ${lastMessage}`
-            : lastMessage;
-        const args = ["exec", "--json"];
-        if (request.model && request.model !== "o3-mini" && request.model !== "auto") {
-            args.push("-m", request.model);
+        const catalog = await this.listModels();
+        const selected = catalog.find((model) => model.id === request.model);
+        if (catalog.length && request.model !== "auto" && !selected) {
+            yield {
+                type: "error",
+                category: "bad_request",
+                error: "Selected model is not in the local Codex catalog.",
+            };
+            return;
         }
-        args.push(fullPrompt);
-        const { stream, kill } = spawnStreaming(det.path, args, request.signal);
+        const workspace = await mkdtemp(join(tmpdir(), "tern-codex-"));
+        const args = [
+            "exec",
+            "--json",
+            "--ephemeral",
+            "--skip-git-repo-check",
+            "--sandbox",
+            "read-only",
+            "--color",
+            "never",
+        ];
+        // Respect the exact selected model, including o3-mini; never silently use the default.
+        if (request.model && request.model !== "auto")
+            args.push("-m", request.model);
+        // Use the model's declared default, rather than a developer's local high-effort setting.
+        if (selected?.defaultReasoningEffort)
+            args.push("-c", `model_reasoning_effort=${JSON.stringify(selected.defaultReasoningEffort)}`);
+        args.push(antigravityPrompt(request.messages));
+        const { stream, kill } = spawnStreaming(det.path, args, request.signal, workspace);
         this.activeProcesses.set(request.id, kill);
+        let usage;
         try {
-            let buffer = "";
-            for await (const chunk of stream) {
-                buffer += chunk;
-                const lines = buffer.split("\n");
-                buffer = lines.pop() || "";
-                for (const line of lines) {
-                    if (!line.trim())
-                        continue;
-                    try {
-                        const data = JSON.parse(line);
-                        if (data.type === "item.completed" &&
-                            data.item?.type === "agent_message" &&
-                            data.item.text) {
-                            yield { type: "token", token: data.item.text };
-                        }
-                    }
-                    catch {
-                        yield { type: "token", token: line + "\n" };
-                    }
-                }
-            }
-            if (buffer.trim()) {
-                try {
-                    const data = JSON.parse(buffer);
-                    if (data.type === "item.completed" &&
-                        data.item?.type === "agent_message" &&
-                        data.item.text) {
-                        yield { type: "token", token: data.item.text };
-                    }
-                }
-                catch {
-                    yield { type: "token", token: buffer };
-                }
-            }
-            yield { type: "done" };
+            for await (const text of codexText(stream, (value) => {
+                usage = value;
+            }))
+                yield { type: "token", token: text };
+            yield { type: "done", ...(usage ? { usage } : {}) };
         }
         catch (err) {
             yield {
                 type: "error",
-                error: err?.message || "Codex CLI execution failed",
+                category: err instanceof LocalProviderError ? err.category : "server_error",
+                error: "Codex request failed. Check local sign-in and model availability.",
             };
         }
         finally {
+            kill();
             this.activeProcesses.delete(request.id);
+            await rm(workspace, { recursive: true, force: true });
         }
     }
     async cancel(requestId) {

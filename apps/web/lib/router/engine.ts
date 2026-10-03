@@ -273,6 +273,7 @@ export class RoutedClient implements CompletionClient {
       );
     const path: string[] = [];
     let last: RouteError | undefined;
+    let busy = false;
     for (const c of candidates.slice(0, 4)) {
       options.signal?.throwIfAborted();
       if (!eligible({ ...await this.store.connection(c.id), model: c.model })) continue;
@@ -280,7 +281,8 @@ export class RoutedClient implements CompletionClient {
         secrets = [secret.key, ...Object.values(secret.headers)].filter(
           Boolean,
         );
-      await this.store.touch(c.id);
+      const lease = await this.store.claimInference(c);
+      if (!lease) { busy = true; continue; }
       const started = Date.now();
       let visible = false,
         ttft: number | null = null;
@@ -314,6 +316,7 @@ export class RoutedClient implements CompletionClient {
         }
       });
       try {
+        await this.store.touch(c.id);
         let resultText = "";
         let inputTokens: number | null = null;
         let outputTokens: number | null = null;
@@ -339,6 +342,8 @@ export class RoutedClient implements CompletionClient {
             c.timeoutMs,
           );
           resultText = companionRes.text;
+          inputTokens = companionRes.usage?.inputTokens ?? null;
+          outputTokens = companionRes.usage?.outputTokens ?? null;
         } else {
           const result = await infer(
             c,
@@ -431,9 +436,12 @@ export class RoutedClient implements CompletionClient {
       } finally {
         trace.latencyMs = Date.now() - started;
         trace.ttftMs = ttft;
-        await this.store.trace(trace);
+        try { await this.store.trace(trace); }
+        finally { await this.store.releaseInference(lease); }
       }
     }
-    throw last || new PublicError("No eligible connection remains.", 409);
+    throw last || new PublicError(busy
+      ? "This account is already generating a response. Wait for it to finish, stop the current request, or select another account."
+      : "No eligible connection remains.", 409);
   }
 }

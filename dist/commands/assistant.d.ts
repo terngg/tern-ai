@@ -23,6 +23,7 @@ export interface TaskResult extends ParsedOutput {
     omitted: number;
     apiCount: number;
 }
+export declare function conversationalPrompt(prompt: string): boolean;
 export declare class Assistant {
     private readonly config;
     private readonly index;

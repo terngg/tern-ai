@@ -1,8 +1,8 @@
 import type { Connection, DetectedLocalProvider } from "./types.js";
 import { canonicalModel } from "./model-selection.js";
 
-// Leaves room for cleanup before the 105s request / 120s Vercel deadlines.
-export const COMPANION_TIMEOUT_MS = 90_000;
+// Leaves room for cleanup/validation before the 290s request / 300s Vercel deadlines.
+export const COMPANION_TIMEOUT_MS = 270_000;
 
 export function companionState(
   detected: DetectedLocalProvider,
@@ -25,7 +25,7 @@ export function companionState(
     latencyMs: detected.health.latencyMs ?? null,
     cooldownUntil: cooling ? current!.cooldownUntil : null,
     // Upgrade the former automatic 60s default; retain other configured limits.
-    timeoutMs: !current || current.timeoutMs === 60_000
+    timeoutMs: !current || [60_000, 90_000].includes(current.timeoutMs)
       ? COMPANION_TIMEOUT_MS : current.timeoutMs,
   };
 }

@@ -6,4 +6,4 @@ export interface ContextResult {
     entries: ApiEntry[];
     omitted: number;
 }
-export declare function buildContext(index: ApiIndex, request: string, files: FileContext[], history: Message[], language: string, extra?: string, maxBytes?: number): ContextResult;
+export declare function buildContext(index: ApiIndex, request: string, files: FileContext[], history: Message[], language: string, extra?: string, maxBytes?: number, includeApi?: boolean): ContextResult;

@@ -69,7 +69,7 @@ export async function chatApi(
       signal = AbortSignal.any([
         request.signal,
         controller.signal,
-        AbortSignal.timeout(105_000),
+        AbortSignal.timeout(290_000),
       ]);
     const options = {
       model,
@@ -126,6 +126,11 @@ export async function chatApi(
             controller.abort();
           }
         };
+        const heartbeat = setInterval(() => {
+          if (disconnected) return;
+          try { output.enqueue(encoder.encode(": keep-alive\n\n")); }
+          catch { disconnected = true; controller.abort(); }
+        }, 15_000);
         void (async () => {
           try {
             if (protocol === "anthropic") {
@@ -199,6 +204,7 @@ export async function chatApi(
               },
             });
           } finally {
+            clearInterval(heartbeat);
             try {
               output.close();
             } catch {

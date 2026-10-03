@@ -1,4 +1,5 @@
-import type { LocalProviderAdapter, DetectionResult, AuthStatus, Health, LocalModel, ChatRequest, StreamEvent, InstallGuide } from "../types.js";
+import type { LocalProviderAdapter, DetectionResult, AuthStatus, Health, ChatRequest, StreamEvent, InstallGuide } from "../types.js";
+import { type CodexModel } from "./codex-stream.js";
 export declare class CodexAdapter implements LocalProviderAdapter {
     readonly id = "codex";
     readonly name = "Codex CLI";
@@ -6,7 +7,7 @@ export declare class CodexAdapter implements LocalProviderAdapter {
     private activeProcesses;
     detect(): Promise<DetectionResult>;
     authStatus(): Promise<AuthStatus>;
-    listModels(): Promise<LocalModel[]>;
+    listModels(): Promise<CodexModel[]>;
     health(): Promise<Health>;
     chat(request: ChatRequest): AsyncIterable<StreamEvent>;
     cancel(requestId: string): Promise<void>;

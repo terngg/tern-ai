@@ -16,7 +16,7 @@ export function localProviderError(diagnostic) {
                 /403|permission.?denied|access.?denied/i.test(text) ? "permission_denied" :
                     /deadline|timed? ?out|timeout/i.test(text) ? "timeout" :
                         /503|529|overloaded|temporarily unavailable/i.test(text) ? "provider_overload" :
-                            /unknown model|invalid model|unsupported model|invalid.argument|bad request/i.test(text) ? "bad_request" :
+                            /unknown model|invalid model|unsupported model|model.{0,80}not supported|invalid.argument|bad request/i.test(text) ? "bad_request" :
                                 /ECONNRESET|ENOTFOUND|ECONNREFUSED|network|connection refused/i.test(text) ? "network" : "server_error";
     return new LocalProviderError(category);
 }

@@ -1,5 +1,5 @@
 import { Pool } from "pg";
-import { randomUUID } from "node:crypto";
+import { randomUUID, randomInt } from "node:crypto";
 import { encrypt, decrypt } from "./crypto.js";
 import { PublicError } from "./errors.js";
 import type { Connection, PoolConfig, Secret, Trace } from "./types.js";
@@ -123,6 +123,31 @@ export class RouterStore {
       [this.owner, scope],
     );
     return Number(rows[0]!.cursor) - 1;
+  }
+  /** Persisted account lease. One local CLI identity may back several connections. */
+  async claimInference(
+    c: Connection,
+  ): Promise<{ scope: string; expires: number; nonce: number } | null> {
+    const scope = `inference:${this.owner}:${c.baseUrl.startsWith("companion://") ? c.baseUrl : c.id}`;
+    const now = Date.now(),
+      expires = now + c.timeoutMs + 15_000,
+      nonce = randomInt(1, 2 ** 31);
+    const { rows } = await this.db.query(
+      "INSERT INTO tern_limits(scope,bucket,count) VALUES($1,$2,$4) ON CONFLICT(scope) DO UPDATE SET bucket=excluded.bucket,count=excluded.count,updated_at=now() WHERE tern_limits.bucket <= $3 RETURNING scope",
+      [scope, expires, now, nonce],
+    );
+    return rows.length ? { scope, expires, nonce } : null;
+  }
+  async releaseInference(lease: {
+    scope: string;
+    expires: number;
+    nonce: number;
+  }): Promise<void> {
+    // A delayed cleanup cannot release a newer request's lease.
+    await this.db.query(
+      "DELETE FROM tern_limits WHERE scope=$1 AND bucket=$2 AND count=$3",
+      [lease.scope, lease.expires, lease.nonce],
+    );
   }
   async pools(): Promise<PoolConfig[]> {
     const { rows } = await this.db.query<{ config: PoolConfig }>(

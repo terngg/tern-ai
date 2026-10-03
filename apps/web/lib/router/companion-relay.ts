@@ -11,12 +11,21 @@ import { companionState, COMPANION_TIMEOUT_MS } from "./companion-state.js";
 import type { ErrorCategory } from "./types.js";
 
 const companionErrors = new Set<ErrorCategory>([
-  "auth_failure", "permission_denied", "bad_request", "rate_limit",
-  "quota_exhausted", "timeout", "provider_overload", "server_error", "network",
+  "auth_failure",
+  "permission_denied",
+  "bad_request",
+  "rate_limit",
+  "quota_exhausted",
+  "timeout",
+  "provider_overload",
+  "server_error",
+  "network",
 ]);
 function companionError(value: unknown): ErrorCategory {
-  return typeof value === "string" && companionErrors.has(value as ErrorCategory)
-    ? value as ErrorCategory : "server_error";
+  return typeof value === "string" &&
+    companionErrors.has(value as ErrorCategory)
+    ? (value as ErrorCategory)
+    : "server_error";
 }
 
 function hashToken(token: string): string {
@@ -26,7 +35,9 @@ function hashToken(token: string): string {
 export class CompanionRelay {
   constructor(private db: Database = database()) {}
 
-  async generatePairCode(userId: string): Promise<{ code: string; expiresAt: number }> {
+  async generatePairCode(
+    userId: string,
+  ): Promise<{ code: string; expiresAt: number }> {
     const raw = randomBytes(4).toString("hex").toUpperCase();
     const code = `PAIR-${raw.slice(0, 4)}-${raw.slice(4, 8)}`;
     const expiresAt = Date.now() + 10 * 60 * 1000; // 10 minutes
@@ -42,7 +53,12 @@ export class CompanionRelay {
     code: string,
     platform: string,
     label: string,
-  ): Promise<{ companionId: string; token: string; userId: string; label: string }> {
+  ): Promise<{
+    companionId: string;
+    token: string;
+    userId: string;
+    label: string;
+  }> {
     const { rows } = await this.db.query<{ user_id: string; expires_at: Date }>(
       "SELECT user_id, expires_at FROM tern_companion_pairing WHERE code=$1",
       [code],
@@ -52,30 +68,49 @@ export class CompanionRelay {
       throw new PublicError("Invalid or expired pairing code.", 400);
     }
     if (new Date(rows[0].expires_at).getTime() < Date.now()) {
-      await this.db.query("DELETE FROM tern_companion_pairing WHERE code=$1", [code]);
-      throw new PublicError("Pairing code has expired. Please generate a new one.", 400);
+      await this.db.query("DELETE FROM tern_companion_pairing WHERE code=$1", [
+        code,
+      ]);
+      throw new PublicError(
+        "Pairing code has expired. Please generate a new one.",
+        400,
+      );
     }
 
     const userId = rows[0].user_id;
     // Consume code
-    await this.db.query("DELETE FROM tern_companion_pairing WHERE code=$1", [code]);
+    await this.db.query("DELETE FROM tern_companion_pairing WHERE code=$1", [
+      code,
+    ]);
 
     const companionId = `comp_${randomBytes(8).toString("hex")}`;
     const token = `tc_${randomBytes(24).toString("hex")}`;
     const tokenHash = hashToken(token);
 
     // Delete any existing companion for this user to keep 1 active companion pair per user
-    await this.db.query("DELETE FROM tern_companions WHERE user_id=$1", [userId]);
+    await this.db.query("DELETE FROM tern_companions WHERE user_id=$1", [
+      userId,
+    ]);
 
     await this.db.query(
       "INSERT INTO tern_companions(user_id, id, token_hash, label, platform, last_heartbeat) VALUES($1, $2, $3, $4, $5, $6)",
-      [userId, companionId, tokenHash, label || "local-companion", platform || process.platform, Date.now()],
+      [
+        userId,
+        companionId,
+        tokenHash,
+        label || "local-companion",
+        platform || process.platform,
+        Date.now(),
+      ],
     );
 
     return { companionId, token, userId, label };
   }
 
-  async authenticateCompanion(companionId: string, token: string): Promise<{ userId: string; label: string }> {
+  async authenticateCompanion(
+    companionId: string,
+    token: string,
+  ): Promise<{ userId: string; label: string }> {
     const tokenHash = hashToken(token);
     const { rows } = await this.db.query<{ user_id: string; label: string }>(
       "SELECT user_id, label FROM tern_companions WHERE id=$1 AND token_hash=$2",
@@ -103,7 +138,9 @@ export class CompanionRelay {
       return { paired: false, connected: false, detectedProviders: [] };
     }
 
-    const lastHeartbeat = rows[0].last_heartbeat ? Number(rows[0].last_heartbeat) : 0;
+    const lastHeartbeat = rows[0].last_heartbeat
+      ? Number(rows[0].last_heartbeat)
+      : 0;
     // Consider connected if heartbeat received in last 60 seconds
     const connected = Date.now() - lastHeartbeat < 60_000;
 
@@ -145,7 +182,9 @@ export class CompanionRelay {
 
     for (const dp of detectedProviders) {
       if (!dp.installed) continue;
-      const found = existing.find((c) => c.provider === dp.id && c.baseUrl === `companion://${dp.id}`);
+      const found = existing.find(
+        (c) => c.provider === dp.id && c.baseUrl === `companion://${dp.id}`,
+      );
       const isHealthy = dp.authenticated && dp.health.ok;
       const defaultModel = dp.models[0]?.id || "";
 
@@ -168,13 +207,19 @@ export class CompanionRelay {
             timeoutMs: COMPANION_TIMEOUT_MS,
             models: dp.models,
             modelsAt: Date.now(),
-            health: isHealthy ? "connected" : dp.authenticated ? "network" : "auth_failure",
+            health: isHealthy
+              ? "connected"
+              : dp.authenticated
+                ? "network"
+                : "auth_failure",
             checkedAt: Date.now(),
             latencyMs: dp.health.latencyMs ?? null,
             cooldownUntil: null,
             lastUsed: null,
             quota: "unknown",
-            maskedCredential: dp.authenticated ? "Local Auth" : "Unauthenticated",
+            maskedCredential: dp.authenticated
+              ? "Local Auth"
+              : "Unauthenticated",
             hasCredential: true,
           },
           secret,
@@ -186,29 +231,23 @@ export class CompanionRelay {
     }
   }
 
-  async pollPendingJobs(companionId: string): Promise<Array<{
-    id: string;
-    provider: string;
-    model: string;
-    request: unknown;
-  }>> {
+  async pollPendingJobs(companionId: string): Promise<
+    Array<{
+      id: string;
+      provider: string;
+      model: string;
+      request: unknown;
+    }>
+  > {
     const { rows } = await this.db.query<{
       id: string;
       provider: string;
       model: string;
       request: unknown;
     }>(
-      "SELECT id, provider, model, request FROM tern_relay_jobs WHERE companion_id=$1 AND status='pending' ORDER BY created_at ASC LIMIT 5",
+      "UPDATE tern_relay_jobs SET status='running',updated_at=now() WHERE id IN (SELECT id FROM tern_relay_jobs WHERE companion_id=$1 AND status='pending' ORDER BY created_at ASC LIMIT 5 FOR UPDATE SKIP LOCKED) RETURNING id,provider,model,request",
       [companionId],
     );
-
-    if (rows.length > 0) {
-      const ids = rows.map((r) => r.id);
-      await this.db.query(
-        "UPDATE tern_relay_jobs SET status='running', updated_at=now() WHERE id = ANY($1)",
-        [ids],
-      );
-    }
     return rows;
   }
 
@@ -223,35 +262,88 @@ export class CompanionRelay {
   async appendJobEvent(
     companionId: string,
     jobId: string,
-    event: { type: "token" | "done" | "error"; token?: string; error?: string; category?: string; sequence?: number },
+    event: {
+      type: "token" | "done" | "error";
+      token?: string;
+      error?: string;
+      category?: string;
+      sequence?: number;
+      usage?: { inputTokens: number; outputTokens: number };
+    },
   ): Promise<void> {
+    if (
+      event.usage &&
+      (!Number.isSafeInteger(event.usage.inputTokens) ||
+        event.usage.inputTokens < 0 ||
+        !Number.isSafeInteger(event.usage.outputTokens) ||
+        event.usage.outputTokens < 0)
+    )
+      throw new PublicError("Invalid token usage.");
     if (event.sequence !== undefined) {
       const sequence = event.sequence;
-      if (!Number.isSafeInteger(sequence) || sequence < 0 || sequence > 2_000_000)
+      if (
+        !Number.isSafeInteger(sequence) ||
+        sequence < 0 ||
+        sequence > 2_000_000
+      )
         throw new PublicError("Invalid event sequence.");
       const category = companionError(event.category);
-      const { rows } = event.type === "token"
-        ? await this.db.query(
-          "UPDATE tern_relay_jobs SET chunks=chunks || $1::jsonb, updated_at=now() WHERE id=$2 AND companion_id=$3 AND status IN ('pending','running') AND jsonb_array_length(chunks)=$4 RETURNING id",
-          [JSON.stringify([event.token]), jobId, companionId, sequence],
-        )
-        : await this.db.query(
-          "UPDATE tern_relay_jobs SET status=$1, error=$2, updated_at=now() WHERE id=$3 AND companion_id=$4 AND status IN ('pending','running') AND jsonb_array_length(chunks)=$5 RETURNING id",
-          [event.type === "done" ? "completed" : "error", event.type === "error" ? category : null, jobId, companionId, sequence],
-        );
+      const { rows } =
+        event.type === "token"
+          ? await this.db.query(
+              "UPDATE tern_relay_jobs SET chunks=chunks || $1::jsonb, updated_at=now() WHERE id=$2 AND companion_id=$3 AND status IN ('pending','running') AND jsonb_array_length(chunks)=$4 RETURNING id",
+              [JSON.stringify([event.token]), jobId, companionId, sequence],
+            )
+          : await this.db.query(
+              "UPDATE tern_relay_jobs SET status=$1, error=$2, request=request || $6::jsonb, updated_at=now() WHERE id=$3 AND companion_id=$4 AND status IN ('pending','running') AND jsonb_array_length(chunks)=$5 RETURNING id",
+              [
+                event.type === "done" ? "completed" : "error",
+                event.type === "error" ? category : null,
+                jobId,
+                companionId,
+                sequence,
+                JSON.stringify(
+                  event.type === "done" && event.usage
+                    ? {
+                        usage: {
+                          inputTokens: event.usage.inputTokens,
+                          outputTokens: event.usage.outputTokens,
+                        },
+                      }
+                    : {},
+                ),
+              ],
+            );
       if (rows.length) return;
       // Token chunk count is the durable sequence cursor. An acknowledgement
       // lost in transit may be retried only with the exact same event payload.
-      const { rows: current } = await this.db.query<{ status: string; count: number; token: string | null; error: string | null }>(
+      const { rows: current } = await this.db.query<{
+        status: string;
+        count: number;
+        token: string | null;
+        error: string | null;
+      }>(
         "SELECT status,jsonb_array_length(chunks) AS count,chunks->>$3::integer AS token,error FROM tern_relay_jobs WHERE id=$1 AND companion_id=$2",
         [jobId, companionId, sequence],
       );
       const job = current[0];
       if (!job) throw new PublicError("Relay job not found.", 404);
-      if (job.status === "cancelled") throw new PublicError("Relay job was cancelled.", 410);
-      if (event.type === "token" && job.count > sequence && job.token === event.token) return;
-      if (job.count === sequence && ((event.type === "done" && job.status === "completed") ||
-        (event.type === "error" && job.status === "error" && job.error === category))) return;
+      if (job.status === "cancelled")
+        throw new PublicError("Relay job was cancelled.", 410);
+      if (
+        event.type === "token" &&
+        job.count > sequence &&
+        job.token === event.token
+      )
+        return;
+      if (
+        job.count === sequence &&
+        ((event.type === "done" && job.status === "completed") ||
+          (event.type === "error" &&
+            job.status === "error" &&
+            job.error === category))
+      )
+        return;
       throw new PublicError("Relay event is out of order.", 409);
     }
     if (event.type === "token" && event.token) {
@@ -261,8 +353,21 @@ export class CompanionRelay {
       );
     } else if (event.type === "done") {
       await this.db.query(
-        "UPDATE tern_relay_jobs SET status='completed', updated_at=now() WHERE id=$1 AND companion_id=$2 AND status IN ('pending', 'running')",
-        [jobId, companionId],
+        "UPDATE tern_relay_jobs SET status='completed', request=request || $3::jsonb, updated_at=now() WHERE id=$1 AND companion_id=$2 AND status IN ('pending', 'running')",
+        [
+          jobId,
+          companionId,
+          JSON.stringify(
+            event.usage
+              ? {
+                  usage: {
+                    inputTokens: event.usage.inputTokens,
+                    outputTokens: event.usage.outputTokens,
+                  },
+                }
+              : {},
+          ),
+        ],
       );
     } else if (event.type === "error") {
       await this.db.query(
@@ -282,18 +387,25 @@ export class CompanionRelay {
     onToken?: (token: string) => void,
     signal?: AbortSignal,
     timeoutMs = COMPANION_TIMEOUT_MS,
-  ): Promise<{ text: string }> {
-    const { rows: companionRows } = await this.db.query<{ id: string; last_heartbeat: string | null }>(
-      "SELECT id, last_heartbeat FROM tern_companions WHERE user_id=$1",
-      [userId],
-    );
+  ): Promise<{
+    text: string;
+    usage?: { inputTokens: number; outputTokens: number };
+  }> {
+    const { rows: companionRows } = await this.db.query<{
+      id: string;
+      last_heartbeat: string | null;
+    }>("SELECT id, last_heartbeat FROM tern_companions WHERE user_id=$1", [
+      userId,
+    ]);
 
     if (!companionRows[0]) {
       throw new RouteError("network", 503);
     }
 
     const companionId = companionRows[0].id;
-    const lastHeartbeat = companionRows[0].last_heartbeat ? Number(companionRows[0].last_heartbeat) : 0;
+    const lastHeartbeat = companionRows[0].last_heartbeat
+      ? Number(companionRows[0].last_heartbeat)
+      : 0;
     if (Date.now() - lastHeartbeat > 60_000) {
       throw new RouteError("network", 503);
     }
@@ -303,59 +415,80 @@ export class CompanionRelay {
 
     await this.db.query(
       "INSERT INTO tern_relay_jobs(id, user_id, companion_id, provider, model, request, status) VALUES($1, $2, $3, $4, $5, $6::jsonb, 'pending')",
-      [jobId, userId, companionId, provider, model, JSON.stringify(requestPayload)],
+      [
+        jobId,
+        userId,
+        companionId,
+        provider,
+        model,
+        JSON.stringify(requestPayload),
+      ],
     );
 
     let text = "";
     let processedChunks = 0;
     const start = Date.now();
 
-    while (Date.now() - start < timeoutMs) {
-      if (signal?.aborted) {
-        await this.db.query(
-          "UPDATE tern_relay_jobs SET status='cancelled', updated_at=now() WHERE id=$1 AND user_id=$2 AND status IN ('pending', 'running')",
+    try {
+      while (Date.now() - start < timeoutMs) {
+        if (signal?.aborted) {
+          await this.db.query(
+            "UPDATE tern_relay_jobs SET status='cancelled', updated_at=now() WHERE id=$1 AND user_id=$2 AND status IN ('pending', 'running')",
+            [jobId, userId],
+          );
+          throw new RouteError("cancelled");
+        }
+
+        const { rows } = await this.db.query<{
+          status: string;
+          chunks: string[];
+          error: string | null;
+          request?: { usage?: { inputTokens: number; outputTokens: number } };
+        }>(
+          "SELECT status, chunks, error, request FROM tern_relay_jobs WHERE id=$1 AND user_id=$2",
           [jobId, userId],
         );
-        throw new RouteError("cancelled");
+
+        if (!rows[0]) throw new RouteError("server_error", 500);
+
+        const job = rows[0];
+        const chunks = Array.isArray(job.chunks) ? job.chunks : [];
+
+        while (processedChunks < chunks.length) {
+          const chunk = chunks[processedChunks]!;
+          text += chunk;
+          onToken?.(chunk);
+          processedChunks++;
+        }
+
+        if (job.status === "completed") {
+          if (!text.trim()) throw new RouteError("server_error");
+          return {
+            text,
+            ...(job.request?.usage ? { usage: job.request.usage } : {}),
+          };
+        }
+        if (job.status === "error") {
+          const category = companionError(job.error);
+          throw new RouteError(category, category === "rate_limit" ? 429 : 502);
+        }
+
+        await new Promise((r) => setTimeout(r, 200));
       }
 
-      const { rows } = await this.db.query<{
-        status: string;
-        chunks: string[];
-        error: string | null;
-      }>(
-        "SELECT status, chunks, error FROM tern_relay_jobs WHERE id=$1",
-        [jobId],
+      await this.db.query(
+        "UPDATE tern_relay_jobs SET status='cancelled', updated_at=now() WHERE id=$1 AND user_id=$2 AND status IN ('pending', 'running')",
+        [jobId, userId],
       );
-
-      if (!rows[0]) throw new RouteError("server_error", 500);
-
-      const job = rows[0];
-      const chunks = Array.isArray(job.chunks) ? job.chunks : [];
-
-      while (processedChunks < chunks.length) {
-        const chunk = chunks[processedChunks]!;
-        text += chunk;
-        onToken?.(chunk);
-        processedChunks++;
-      }
-
-      if (job.status === "completed") {
-        if (!text.trim()) throw new RouteError("server_error");
-        return { text };
-      }
-      if (job.status === "error") {
-        const category = companionError(job.error);
-        throw new RouteError(category, category === "rate_limit" ? 429 : 502);
-      }
-
-      await new Promise((r) => setTimeout(r, 200));
+      throw new RouteError("timeout", 504);
+    } finally {
+      // Also cancel on stream/write/database errors, so a detached CLI job cannot keep spending quota.
+      await this.db
+        .query(
+          "UPDATE tern_relay_jobs SET status='cancelled',updated_at=now() WHERE id=$1 AND user_id=$2 AND status IN ('pending','running')",
+          [jobId, userId],
+        )
+        .catch(() => {});
     }
-
-    await this.db.query(
-      "UPDATE tern_relay_jobs SET status='cancelled', updated_at=now() WHERE id=$1 AND user_id=$2 AND status IN ('pending', 'running')",
-      [jobId, userId],
-    );
-    throw new RouteError("timeout", 504);
   }
 }

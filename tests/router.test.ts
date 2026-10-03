@@ -643,3 +643,41 @@ test("GTPS retrieval, Lua validation and bounded repair remain around the new ro
     await pg.close();
   }
 });
+
+test('account leases reject overlapping requests, release on completion, and isolate users',async()=>{
+  const {pg,db,a,b}=await fixture();
+  try{
+    const c=await add(a), other=await add(b);
+    await a.patch(c.id,{timeoutMs:10000});
+    let ready!:()=>void, finish!:()=>void;
+    const started=new Promise<void>(r=>{ready=r;}), blocked=new Promise<void>(r=>{finish=r;});
+    let calls=0;
+    const transport:Transport=async()=>{calls++;ready();await blocked;return json({choices:[{message:{content:'finished'}}]});};
+    const options={model:c.model,messages:[{role:'user' as const,content:'hello'}],stream:false,temperature:0,free:false};
+    const first=new RoutedClient(a,`${c.id}::${c.model}`,undefined,transport).complete(options);
+    await started;
+    await assert.rejects(new RoutedClient(a,`${c.id}::${c.model}`,undefined,transport).complete(options),/already generating/);
+    assert.equal(calls,1);
+    const foreign=await b.claimInference(other);assert.ok(foreign);await b.releaseInference(foreign);
+    finish();assert.equal(await first,'finished');
+    assert.equal(await new RoutedClient(a,`${c.id}::${c.model}`,undefined,transport).complete(options),'finished');
+    assert.equal(calls,2);
+    assert.equal((await a.connection(c.id)).cooldownUntil,null);
+    assert.equal((await db.query("SELECT scope FROM tern_limits WHERE scope LIKE 'inference:%'")).rows.length,0);
+  }finally{await pg.close();}
+});
+
+test('Companion aliases share an account lease, and stale leases expire safely',async()=>{
+  const{pg,db,a}=await fixture();
+  try{
+    const c={...await add(a),baseUrl:'companion://codex'};
+    const alias={...c,id:'alias'};
+    const lease=await a.claimInference(c);assert.ok(lease);
+    assert.equal(await a.claimInference(alias),null);
+    await db.query('UPDATE tern_limits SET bucket=0 WHERE scope=$1',[lease.scope]);
+    const newLease=await a.claimInference(alias);assert.ok(newLease);
+    await a.releaseInference(lease);
+    assert.equal(await a.claimInference(c),null);
+    await a.releaseInference(newLease);
+  }finally{await pg.close();}
+});

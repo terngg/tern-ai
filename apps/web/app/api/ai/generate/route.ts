@@ -13,7 +13,7 @@ import type { FileContext } from "../../../../../../src/utils/files.js";
 import type { Message } from "../../../../../../src/openrouter/client.js";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 const headers = {
   "Content-Type": "text/event-stream; charset=utf-8",
   "Cache-Control": "no-store, no-transform",
@@ -133,7 +133,7 @@ export async function POST(request: Request): Promise<Response> {
   const timeout = setTimeout(() => {
     timedOut = true;
     abort();
-  }, 110_000);
+  }, 290_000);
   let disconnected = false;
   const stream = new ReadableStream<Uint8Array>({
     start(streamController) {
@@ -148,6 +148,7 @@ export async function POST(request: Request): Promise<Response> {
             controller.abort();
           }
       };
+      const heartbeat = setInterval(() => write("ping", {}), 15_000);
       void (async () => {
         try {
           const index = await localIndex();
@@ -234,6 +235,7 @@ export async function POST(request: Request): Promise<Response> {
             });
           else write("stopped", {});
         } finally {
+          clearInterval(heartbeat);
           clearTimeout(timeout);
           request.signal.removeEventListener("abort", abort);
           try {

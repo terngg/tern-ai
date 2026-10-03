@@ -75,7 +75,7 @@ export class AntigravityAdapter {
             lastMessage,
             "--disable-slash-commands",
         ];
-        args.push("--output-format", "stream-json", "--print-timeout", "85s");
+        args.push("--output-format", "stream-json", "--print-timeout", "260s");
         if (request.model === "antigravity-flash" || !request.model) {
             args.unshift("--model", "gemini-3.8-flash-medium");
         }

@@ -88,7 +88,7 @@ test("heartbeat repairs missing defaults and expired cooldowns without bypassing
     await relay.syncHeartbeat(companionId, "linux", "test", [antigravity]);
     const ready = await store.connection(initial!.id);
     assert.equal(ready.model, "test-flash");
-    assert.equal(ready.timeoutMs, 90_000);
+    assert.equal(ready.timeoutMs, 270_000);
     assert.equal(ready.cooldownUntil, null);
     assert.equal(eligible(ready), true);
 
@@ -535,4 +535,29 @@ test("relay acknowledgements are durable, ordered, idempotent, and scoped to the
     await db.query("UPDATE tern_relay_jobs SET status='cancelled' WHERE id='delivery-job'");
     await assert.rejects(append(2, "done"), /cancelled/);
   } finally { await pg.close(); }
+});
+
+test('relay records actual CLI token usage and polling cannot dispatch a job twice',async()=>{
+  const{pg,db}=await pgFixture();
+  try{
+    const relay=new CompanionRelay(db);
+    const{code}=await relay.generatePairCode('user-1');
+    const{companionId}=await relay.redeemPairCode(code,'linux','usage-test');
+    const worker=async()=>{
+      for(let i=0;i<60;i++){
+        const a=await relay.pollPendingJobs(companionId);
+        if(a[0]){
+          assert.deepEqual(await relay.pollPendingJobs(companionId),[]);
+          await relay.appendJobEvent(companionId,a[0].id,{type:'token',token:'hello',sequence:0});
+          await assert.rejects(relay.appendJobEvent(companionId,a[0].id,{type:'done',sequence:1,usage:{inputTokens:-1,outputTokens:2}}),/Invalid token usage/);
+          await relay.appendJobEvent(companionId,a[0].id,{type:'done',sequence:1,usage:{inputTokens:120,outputTokens:5}});
+          return;
+        }
+        await new Promise(r=>setTimeout(r,20));
+      }
+      assert.fail('No dispatched job');
+    };
+    const[result]=await Promise.all([relay.dispatchAndStreamJob('user-1','codex','test',[]),worker()]);
+    assert.deepEqual(result,{text:'hello',usage:{inputTokens:120,outputTokens:5}});
+  }finally{await pg.close();}
 });

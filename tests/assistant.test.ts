@@ -109,3 +109,19 @@ test('recovery is bounded, skips paid/auth requests, respects long Retry-After a
     }finally{await rm(dir,{recursive:true,force:true});}
   }
 });
+
+test('simple chat uses compact context; code requests and attachments retain GTPS retrieval',async()=>{
+  const requests:Array<{messages:Array<{role:string;content:string}>}>=[];
+  const client=new OpenRouterClient('',async(_url,init)=>{
+    requests.push(JSON.parse(String(init?.body)));
+    return Response.json({choices:[{message:{content:'Halo!'},finish_reason:'stop'}]});
+  });
+  const assistant=new Assistant({...defaults,stream:false},index,client,undefined,'',()=>{});
+  const greeting=await assistant.run({task:'chat',prompt:'Hello cuy',files:[]});
+  assert.equal(greeting.apiCount,0);
+  assert.ok(JSON.stringify(requests[0]).length<1000);
+  await assistant.run({task:'chat',prompt:'Buat daily quest dengan progress dialog',files:[]});
+  assert.ok(JSON.stringify(requests[1]).includes('Authoritative GTPS API excerpts'));
+  await assistant.run({task:'chat',prompt:'Hello',files:[{name:'script.lua',path:'script.lua',content:'print("hello")'}]});
+  assert.ok(JSON.stringify(requests[2]).includes('Authoritative GTPS API excerpts'));
+});

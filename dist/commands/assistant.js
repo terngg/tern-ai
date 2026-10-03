@@ -13,6 +13,10 @@ const instructions = {
     explain: 'Explain the supplied Lua script concisely in the requested language, default Indonesian. Cover intent, flow, storage and engine compatibility. Do not rewrite unless asked.',
     chat: 'Help with this GTPS Lua request, maintaining continuity with the latest script. If changing code, return the full updated script.',
 };
+// Narrow allowlist: code requests, files, follow-up edits and repair always retain GTPS retrieval.
+export function conversationalPrompt(prompt) {
+    return /^(?:h[ae]llo?|helo|hi|hai|halo|hey|yo|thanks|thank you|terima kasih|makasih|model apa kamu|apa model kamu|what model are you)(?:\s+(?:cuy|bro|bang|tern|ternai|tern ai))?[.!?\s]*$/i.test(prompt.trim());
+}
 export class Assistant {
     config;
     index;
@@ -32,8 +36,9 @@ export class Assistant {
         const safeFiles = input.files.map(f => ({ ...f, content: redact(f.content, this.key) }));
         const history = (input.history || []).map(m => ({ ...m, content: redact(m.content, this.key) }));
         const summary = input.summary?.trim();
-        const request = instructions[input.task] + '\n' + redact(input.prompt, this.key);
-        this.status('Matching GTPS APIs...');
+        const conversational = input.task === 'chat' && !safeFiles.length && conversationalPrompt(input.prompt);
+        const request = (conversational ? '' : instructions[input.task] + '\n') + redact(input.prompt, this.key);
+        this.status(conversational ? 'Preparing reply...' : 'Matching GTPS APIs...');
         const localFindings = safeFiles.map(f => ({ file: f.name, validation: validateLua(f.content, this.index) }));
         let extra = localFindings.length ? '\nLocal static analysis (heuristic, verify findings):\n' + JSON.stringify(localFindings) : '';
         if (summary)
@@ -48,7 +53,7 @@ export class Assistant {
         let recoveryUsed = false;
         let stream = this.config.stream;
         for (let attempt = 0; attempt <= this.config.maxRepairAttempts; attempt++) {
-            const context = buildContext(this.index, request, safeFiles, history, this.config.language, extra, maxBytes);
+            const context = buildContext(this.index, request, safeFiles, history, this.config.language, extra, maxBytes, !conversational || attempt > 0);
             if (context.omitted && attempt === 0)
                 this.status(`${context.omitted} older messages omitted to preserve API context.`);
             this.status(attempt ? `Repairing validation errors (${attempt}/${this.config.maxRepairAttempts})...` : 'Generating...');
