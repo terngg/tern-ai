@@ -125,3 +125,13 @@ test('simple chat uses compact context; code requests and attachments retain GTP
   await assistant.run({task:'chat',prompt:'Hello',files:[{name:'script.lua',path:'script.lua',content:'print("hello")'}]});
   assert.ok(JSON.stringify(requests[2]).includes('Authoritative GTPS API excerpts'));
 });
+
+test('Daily Quest retrieves progress callbacks without irrelevant HTTP/logging docs from task wording',async()=>{
+  let captured='';
+  const client=new OpenRouterClient('',async(_url,init)=>{captured=String(init?.body);return reply('print("quest")');});
+  const assistant=new Assistant({...defaults,stream:false},index,client,undefined,'',()=>{});
+  await assistant.run({task:'generate',prompt:'Daily Quest: /dailyquest, break 100 blocks, harvest 50 provider, earn 10.000 gems, progress dialog UI, claim reward, save progress per player, reconnect, reset 24 jam.',files:[]});
+  for(const name of ['onTileBreakCallback','onPlayerProviderCallback','onPlayerGemsObtainedCallback','onPlayerDialogCallback','player:onDialogRequest','saveDataToServer','loadDataFromServer'])assert.ok(captured.includes(name),name);
+  assert.ok(!captured.includes('http.request('));
+  assert.ok(!captured.includes('readLog('));
+});

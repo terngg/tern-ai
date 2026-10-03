@@ -53,7 +53,7 @@ export class Assistant {
         let recoveryUsed = false;
         let stream = this.config.stream;
         for (let attempt = 0; attempt <= this.config.maxRepairAttempts; attempt++) {
-            const context = buildContext(this.index, request, safeFiles, history, this.config.language, extra, maxBytes, !conversational || attempt > 0);
+            const context = buildContext(this.index, request, safeFiles, history, this.config.language, extra, maxBytes, !conversational || attempt > 0, redact(input.prompt, this.key));
             if (context.omitted && attempt === 0)
                 this.status(`${context.omitted} older messages omitted to preserve API context.`);
             this.status(attempt ? `Repairing validation errors (${attempt}/${this.config.maxRepairAttempts})...` : 'Generating...');
