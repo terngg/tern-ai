@@ -1,6 +1,6 @@
 // Shared Tern engine entry point. The CLI and Web app use the same provider,
 // prompt, GTPS retrieval and validation modules.
-export { Assistant } from "../../../src/commands/assistant.js";
+export { Assistant, conversationalPrompt } from "../../../src/commands/assistant.js";
 export type {
   Task,
   TaskInput,

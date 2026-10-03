@@ -1,4 +1,4 @@
-import { Assistant, defaults, type Config } from "@tern-ai/core";
+import { Assistant, conversationalPrompt, defaults, type Config } from "@tern-ai/core";
 import { readJson, localIndex, MAX_UPLOAD } from "../../../../lib/server.js";
 import { authenticate } from "../../../../lib/router/auth.js";
 import { RouterStore, rateLimit } from "../../../../lib/router/store.js";
@@ -164,7 +164,7 @@ export async function POST(request: Request): Promise<Response> {
               write("status", { message });
             },
           );
-          const task = [
+          const requestedTask = [
             "generate",
             "fix",
             "review",
@@ -173,6 +173,9 @@ export async function POST(request: Request): Promise<Response> {
           ].includes(String(input.task))
             ? (input.task as "generate" | "fix" | "review" | "explain" | "chat")
             : "chat";
+          // A greeting after using Generate must not trigger paid Lua repair calls.
+          const task = (requestedTask === "generate" || requestedTask === "chat") &&
+            !files.length && conversationalPrompt(input.prompt as string) ? "chat" : requestedTask;
           const result = await assistant.run({
             task,
             prompt: input.prompt as string,
