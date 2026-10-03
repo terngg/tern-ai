@@ -42,3 +42,24 @@ Official protocol reference: https://learn.chatgpt.com/docs/app-server#list-mode
 - Playwright checks every discovered base model, effort availability, search,
   persistence, request selection, custom DOM picker and viewport fit at 1440,
   390 and 360 pixels. These fixtures validate behavior, not provider entitlement.
+
+Verified on 2026-10-03 for product commit `409de84`:
+
+- Lint, root/web typecheck and production build: passed.
+- Unit/integration suite: 136 passed. Playwright: 20 passed locally and 20 passed
+  on the deployed preview, including the existing full frontend regression suite.
+- Preview: https://tern-9kdd3fry7-terngg.vercel.app
+- Production: https://tern-ai-swart.vercel.app
+  (deployment https://tern-kohuiv46g-terngg.vercel.app).
+- Authenticated browser verification on both deployments: all eight real Codex
+  base models and all 44 declared reasoning choices present, selection and focus
+  behavior correct at 1440/390/360px, no native selects or browser dialogs.
+- Actual `gpt-6-astra` with explicitly selected `low` reasoning completed on
+  preview in 7.446s and production in 6.149s. Each used one completed relay job,
+  one successful trace, no retry and no repair. Reported usage per check was
+  7,093 input and 14 output tokens. The trace retained the base model ID and
+  separate `low` effort. This is runtime proof for that combination only.
+- Companion was updated from the committed build and restored to the canonical
+  production URL. No provider credentials were uploaded during catalog discovery.
+- Other models/efforts were verified for discovery and UI selection, not live
+  inference; their provider availability and quotas can change.
