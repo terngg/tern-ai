@@ -60,6 +60,7 @@ const concepts = [
     [/harvest.*provider|provider.*harvest|panen.*provider|provider.*panen/i, 'onPlayerProviderCallback'],
     [/earn.*gems|gems.*earn|dapat.*gems|gems.*dapat/i, 'onPlayerGemsObtainedCallback'],
     [/announce|pengumuman|menit|timer|async|interval/i, 'timer.setInterval timer.setTimeout timer.clearInterval getServerPlayers getUserID getPlayer isOnline'],
+    [/reconnect|disconnect|login|sambung/i, 'onPlayerLoginCallback onPlayerDisconnectCallback'],
     [/spam/i, 'onPlayerCommandCallback getUserID onPlayerDisconnectCallback onConsoleMessage'],
     [/playmod|mod custom/i, 'registerLuaPlaymod addMod hasMod removeMod'],
     [/effect|efek/i, 'world:setEffects world:playEffect player:setEffects'],

@@ -188,16 +188,16 @@ export async function POST(request: Request): Promise<Response> {
             onToken: (text) => write("token", { text }),
           });
           if ((task === "generate" || task === "fix") && !result.code)
-            throw new Error(
-              "No complete Lua script was returned. Try a smaller request.",
+            throw new PublicError(
+              "No complete Lua script was returned. Try a smaller request.", 422,
             );
           if (
             result.validation?.findings.some((f) => f.severity === "error") &&
             task !== "review" &&
             task !== "explain"
           )
-            throw new Error(
-              "Local Lua/GTPS validation still failed after bounded repair. Revise the request or provide a smaller script.",
+            throw new PublicError(
+              "Local Lua/GTPS validation still failed after bounded repair. Revise the request or provide a smaller script.", 422,
             );
           const used = client.lastProvider;
           write("result", {
@@ -221,9 +221,10 @@ export async function POST(request: Request): Promise<Response> {
           });
           write("done", {});
         } catch (error) {
+          const contextError = error instanceof Error && /^(?:Repair context is too large|Context is too large|The latest conversation turn|Prompt exceeds)/.test(error.message);
           const message =
-            error instanceof PublicError || error instanceof RouteError
-              ? error.message
+            error instanceof PublicError || error instanceof RouteError || contextError
+              ? (error as Error).message
               : "Generation failed. Check your provider connection and retry.";
           if (timedOut)
             write("error", {

@@ -47,8 +47,10 @@ export class Assistant {
         const models = this.client.managed || model === DEFAULT_MODEL || !this.catalog ? [] : await this.catalog.list();
         const metadata = models.find(m => m.id === model);
         const free = model === DEFAULT_MODEL || metadata?.free === true || model.endsWith(':free');
-        // Byte count is a conservative upper bound on token count, with reserved output space.
-        const maxBytes = Math.min(48_000, Math.max(8000, (metadata?.contextLength || 32_768) - 9000));
+        // Managed routing applies each discovered model's context limit to the built request.
+        // Keep a bounded application budget large enough for a complete script plus repair references.
+        // Direct CLI providers retain their catalog-derived conservative limit.
+        const maxBytes = this.client.managed ? 48_000 : Math.min(48_000, Math.max(8000, (metadata?.contextLength || 32_768) - 9000));
         let result;
         let recoveryUsed = false;
         let stream = this.config.stream;

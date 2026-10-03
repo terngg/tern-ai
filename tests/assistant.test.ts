@@ -135,3 +135,19 @@ test('Daily Quest retrieves progress callbacks without irrelevant HTTP/logging d
   assert.ok(!captured.includes('http.request('));
   assert.ok(!captured.includes('readLog('));
 });
+
+test('managed routing preserves a substantial complete Lua script throughout bounded repair',async()=>{
+  const code='-- substantial script\n'+'-- retained context and modular logic\n'.repeat(420)+'onPlayerLeaveCallback(function(player) end)';
+  const fixed=code.replace('onPlayerLeaveCallback','onPlayerDisconnectCallback');
+  const contexts:Array<{messages:Array<{content:string}>}>=[];
+  const client={managed:true,async complete(options:{messages:Array<{content:string}>}){
+    contexts.push(options);return '```lua\n'+(contexts.length===1?code:fixed)+'\n```';
+  }};
+  const assistant=new Assistant(defaults,index,client,undefined,'',()=>{});
+  const result=await assistant.run({task:'generate',prompt:'Daily Quest with progress dialog and player reconnect/disconnect',files:[]});
+  assert.equal(contexts.length,2);
+  assert.equal(result.code,fixed);assert.ok(result.validation?.syntaxValid);
+  assert.ok(!result.validation?.findings.some(f=>f.severity==='error'));
+  assert.ok(JSON.stringify(contexts[1]).includes(code.replaceAll('\n','\\n')));
+  assert.ok(JSON.stringify(contexts[1]).includes('onPlayerDisconnectCallback'));
+});
